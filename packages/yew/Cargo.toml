@@ -26,10 +26,7 @@ wasm-bindgen.workspace = true
 yew-macro = { version = "^0.23.0", path = "../yew-macro" }
 thiserror.workspace = true
 futures = { workspace = true, features = ["std"] }
-html-escape = { version = "0.2.13", optional = true }
 implicit-clone = { workspace = true, features = ["map"] }
-base64ct = { version = "1.6.0", features = ["std"], optional = true }
-bincode = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 tracing = "0.1.44"
 tokise = "0.2.0"
@@ -95,9 +92,7 @@ workspace = true
 features = ["ShadowRootInit", "ShadowRootMode", "HtmlButtonElement"]
 
 [features]
-ssr = ["dep:html-escape", "dep:base64ct", "dep:bincode"]
 csr = []
-hydration = ["csr", "dep:bincode"]
 not_browser_env = []
 default = []
 test = []

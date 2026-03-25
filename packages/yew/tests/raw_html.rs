@@ -46,17 +46,6 @@ macro_rules! create_test {
                     .unwrap();
                 assert_eq!(e.inner_html(), $expected);
             }
-            #[cfg(any(not(target_arch = "wasm32"), target_os = "wasi"))]
-            {
-                let actual = yew::LocalServerRenderer::<App>::new()
-                    .hydratable(false)
-                    .render()
-                    .await;
-                assert_eq!(
-                    actual,
-                    format!(r#"<div id="raw-container">{}</div>"#, $expected)
-                );
-            }
         }
     };
 }

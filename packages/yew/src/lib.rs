@@ -279,13 +279,11 @@ pub mod html;
 pub mod platform;
 pub mod scheduler;
 mod sealed;
-#[cfg(feature = "ssr")]
-mod server_renderer;
+
 pub mod suspense;
 pub mod utils;
 pub mod virtual_dom;
-#[cfg(feature = "ssr")]
-pub use server_renderer::*;
+
 
 #[cfg(feature = "csr")]
 mod app_handle;

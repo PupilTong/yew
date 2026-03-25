@@ -1,12 +1,11 @@
 [workspace]
 members = [
-    "packages/*",
-    "tools/*",
-    "examples/*",
+    "packages/yew",
+    "packages/yew-macro"
 ]
 exclude = ["examples/.cargo"]
 default-members = [
-    "packages/*",
+    "packages/yew",
 ]
 resolver = "3"
 
@@ -27,7 +26,8 @@ unexpected_cfgs = { level = "warn", check-cfg = [
     "cfg(verbose_tests)",
     "cfg(yew_lints)",
     "cfg(nightly_yew)",
-    "cfg(wasm_bindgen_unstable_test_coverage)"
+    "cfg(wasm_bindgen_unstable_test_coverage)",
+    "cfg(feature, values(\"ssr\", \"hydration\"))"
 ]}
 [workspace.dependencies]
 tokio = { version = "1.50.0" }

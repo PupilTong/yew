@@ -98,18 +98,3 @@ where
     }
 }
 
-#[cfg(feature = "hydration")]
-mod feat_hydration {
-    use super::*;
-
-    impl<COMP> Renderer<COMP>
-    where
-        COMP: BaseComponent + 'static,
-    {
-        /// Hydrates the application.
-        pub fn hydrate(self) -> AppHandle<COMP> {
-            set_default_panic_hook();
-            AppHandle::<COMP>::hydrate_with_props(self.root, Rc::new(self.props))
-        }
-    }
-}
