@@ -27,7 +27,6 @@ unexpected_cfgs = { level = "warn", check-cfg = [
     "cfg(yew_lints)",
     "cfg(nightly_yew)",
     "cfg(wasm_bindgen_unstable_test_coverage)",
-    "cfg(feature, values(\"ssr\", \"hydration\"))"
 ]}
 [workspace.dependencies]
 tokio = { version = "1.50.0" }

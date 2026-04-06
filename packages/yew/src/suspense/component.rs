@@ -12,13 +12,11 @@ pub struct SuspenseProps {
     pub fallback: Html,
 }
 
-#[cfg(any(feature = "csr", feature = "ssr"))]
+#[cfg(feature = "csr")]
 mod feat_csr_ssr {
     use super::*;
     use crate::html::{Component, Context, Html, Scope};
     use crate::suspense::Suspension;
-    #[cfg(feature = "hydration")]
-    use crate::suspense::SuspensionHandle;
     use crate::virtual_dom::{VNode, VSuspense};
     use crate::{component, html};
 
@@ -38,8 +36,6 @@ mod feat_csr_ssr {
     #[derive(Debug)]
     pub(crate) struct BaseSuspense {
         suspensions: Vec<Suspension>,
-        #[cfg(feature = "hydration")]
-        hydration_handle: Option<SuspensionHandle>,
     }
 
     impl Component for BaseSuspense {
@@ -47,32 +43,8 @@ mod feat_csr_ssr {
         type Properties = BaseSuspenseProps;
 
         fn create(_ctx: &Context<Self>) -> Self {
-            #[cfg(not(feature = "hydration"))]
-            let suspensions = Vec::new();
-
-            // We create a suspension to block suspense until its rendered method is notified.
-            #[cfg(feature = "hydration")]
-            let (suspensions, hydration_handle) = {
-                use crate::callback::Callback;
-                use crate::html::RenderMode;
-
-                match _ctx.creation_mode() {
-                    RenderMode::Hydration => {
-                        let link = _ctx.link().clone();
-                        let (s, handle) = Suspension::new();
-                        s.listen(Callback::from(move |s| {
-                            link.send_message(BaseSuspenseMsg::Resume(s));
-                        }));
-                        (vec![s], Some(handle))
-                    }
-                    _ => (Vec::new(), None),
-                }
-            };
-
             Self {
-                suspensions,
-                #[cfg(feature = "hydration")]
-                hydration_handle,
+                suspensions: Vec::new(),
             }
         }
 
@@ -126,14 +98,6 @@ mod feat_csr_ssr {
             }
         }
 
-        #[cfg(feature = "hydration")]
-        fn rendered(&mut self, _ctx: &Context<Self>, first_render: bool) {
-            if first_render {
-                if let Some(m) = self.hydration_handle.take() {
-                    m.resume();
-                }
-            }
-        }
     }
 
     impl BaseSuspense {
@@ -165,10 +129,10 @@ mod feat_csr_ssr {
     }
 }
 
-#[cfg(any(feature = "csr", feature = "ssr"))]
+#[cfg(feature = "csr")]
 pub use feat_csr_ssr::*;
 
-#[cfg(not(any(feature = "ssr", feature = "csr")))]
+#[cfg(not(feature = "csr"))]
 mod feat_no_csr_ssr {
     use super::*;
     use crate::component;
@@ -180,5 +144,5 @@ mod feat_no_csr_ssr {
     }
 }
 
-#[cfg(not(any(feature = "ssr", feature = "csr")))]
+#[cfg(not(feature = "csr"))]
 pub use feat_no_csr_ssr::*;

@@ -1,7 +1,7 @@
 //! Components wrapped with context including properties, state, and link
 
 mod children;
-#[cfg(any(feature = "csr", feature = "ssr"))]
+#[cfg(feature = "csr")]
 mod lifecycle;
 mod marker;
 mod properties;
@@ -18,26 +18,12 @@ pub use scope::{AnyScope, Scope, SendAsMessage};
 
 use super::{Html, HtmlResult, IntoHtmlResult};
 
-#[cfg(feature = "hydration")]
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum RenderMode {
-    Hydration,
-    Render,
-    #[cfg(feature = "ssr")]
-    Ssr,
-}
-
 /// The [`Component`]'s context. This contains component's [`Scope`] and props and
 /// is passed to every lifecycle method.
 #[derive(Debug)]
 pub struct Context<COMP: BaseComponent> {
     scope: Scope<COMP>,
     props: Rc<COMP::Properties>,
-    #[cfg(feature = "hydration")]
-    creation_mode: RenderMode,
-
-    #[cfg(feature = "hydration")]
-    prepared_state: Option<String>,
 }
 
 impl<COMP: BaseComponent> Context<COMP> {
@@ -53,20 +39,9 @@ impl<COMP: BaseComponent> Context<COMP> {
         &self.props
     }
 
-    #[cfg(feature = "hydration")]
-    pub(crate) fn creation_mode(&self) -> RenderMode {
-        self.creation_mode
-    }
-
     /// The component's prepared state
     pub fn prepared_state(&self) -> Option<&str> {
-        #[cfg(not(feature = "hydration"))]
-        let state = None;
-
-        #[cfg(feature = "hydration")]
-        let state = self.prepared_state.as_deref();
-
-        state
+        None
     }
 }
 
@@ -110,9 +85,6 @@ pub trait BaseComponent: Sized + 'static {
 
     /// Notified before a component is destroyed.
     fn destroy(&mut self, ctx: &Context<Self>);
-
-    /// Prepares the server-side state.
-    fn prepare_state(&self) -> Option<String>;
 }
 
 /// Components are the basic building blocks of the UI in a Yew app. Each Component
@@ -176,16 +148,6 @@ pub trait Component: Sized + 'static {
     #[allow(unused_variables)]
     fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {}
 
-    /// Prepares the state during server side rendering.
-    ///
-    /// This state will be sent to the client side and is available via `ctx.prepared_state()`.
-    ///
-    /// This method is only called during server-side rendering after the component has been
-    /// rendered.
-    fn prepare_state(&self) -> Option<String> {
-        None
-    }
-
     /// Called right before a Component is unmounted.
     #[allow(unused_variables)]
     fn destroy(&mut self, ctx: &Context<Self>) {}
@@ -221,14 +183,10 @@ where
     fn destroy(&mut self, ctx: &Context<Self>) {
         Component::destroy(self, ctx)
     }
-
-    fn prepare_state(&self) -> Option<String> {
-        Component::prepare_state(self)
-    }
 }
 
 #[cfg(test)]
-#[cfg(any(feature = "ssr", feature = "csr"))]
+#[cfg(feature = "csr")]
 mod tests {
     use super::*;
 
@@ -253,10 +211,6 @@ mod tests {
         let ctx = Context {
             scope: Scope::new(None),
             props: Rc::new(()),
-            #[cfg(feature = "hydration")]
-            creation_mode: crate::html::RenderMode::Hydration,
-            #[cfg(feature = "hydration")]
-            prepared_state: None,
         };
         assert!(Component::update(&mut comp, &ctx, ()));
         assert!(Component::changed(&mut comp, &ctx, &Rc::new(())));

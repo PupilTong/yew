@@ -13,8 +13,6 @@ pub mod vnode;
 #[doc(hidden)]
 pub mod vportal;
 #[doc(hidden)]
-pub mod vraw;
-#[doc(hidden)]
 pub mod vsuspense;
 #[doc(hidden)]
 pub mod vtag;
@@ -42,8 +40,6 @@ pub use self::vnode::VNode;
 #[doc(inline)]
 pub use self::vportal::VPortal;
 #[doc(inline)]
-pub use self::vraw::VRaw;
-#[doc(inline)]
 pub use self::vsuspense::VSuspense;
 #[doc(inline)]
 pub use self::vtag::VTag;
@@ -52,128 +48,6 @@ pub use self::vtext::VText;
 
 /// Attribute value
 pub type AttrValue = implicit_clone::unsync::IString;
-
-#[cfg(any(feature = "ssr", feature = "hydration"))]
-mod feat_ssr_hydration {
-    #[cfg(debug_assertions)]
-    type ComponentName = &'static str;
-    #[cfg(not(debug_assertions))]
-    type ComponentName = std::marker::PhantomData<()>;
-
-    #[cfg(feature = "hydration")]
-    use std::borrow::Cow;
-
-    /// A collectable.
-    ///
-    /// This indicates a kind that can be collected from fragment to be processed at a later time
-    pub enum Collectable {
-        Component(ComponentName),
-        Raw,
-        Suspense,
-    }
-
-    impl Collectable {
-        #[cfg(not(debug_assertions))]
-        #[inline(always)]
-        pub fn for_component<T: 'static>() -> Self {
-            use std::marker::PhantomData;
-            // This suppresses the clippy lint about unused generic.
-            // We inline this function
-            // so the function body is copied to its caller and generics get optimised away.
-            let _comp_type: PhantomData<T> = PhantomData;
-            Self::Component(PhantomData)
-        }
-
-        #[cfg(debug_assertions)]
-        pub fn for_component<T: 'static>() -> Self {
-            let comp_name = std::any::type_name::<T>();
-            Self::Component(comp_name)
-        }
-
-        pub fn open_start_mark(&self) -> &'static str {
-            match self {
-                Self::Component(_) => "<[",
-                Self::Raw => "<#",
-                Self::Suspense => "<?",
-            }
-        }
-
-        pub fn close_start_mark(&self) -> &'static str {
-            match self {
-                Self::Component(_) => "</[",
-                Self::Raw => "</#",
-                Self::Suspense => "</?",
-            }
-        }
-
-        pub fn end_mark(&self) -> &'static str {
-            match self {
-                Self::Component(_) => "]>",
-                Self::Raw => ">",
-                Self::Suspense => ">",
-            }
-        }
-
-        #[cfg(feature = "hydration")]
-        pub fn name(&self) -> Cow<'static, str> {
-            match self {
-                #[cfg(debug_assertions)]
-                Self::Component(m) => format!("Component({m})").into(),
-                #[cfg(not(debug_assertions))]
-                Self::Component(_) => "Component".into(),
-                Self::Raw => "Raw".into(),
-                Self::Suspense => "Suspense".into(),
-            }
-        }
-    }
-}
-
-#[cfg(any(feature = "ssr", feature = "hydration"))]
-pub(crate) use feat_ssr_hydration::*;
-
-#[cfg(feature = "ssr")]
-mod feat_ssr {
-    use std::fmt::Write;
-
-    use super::*;
-    use crate::platform::fmt::BufWriter;
-
-    impl Collectable {
-        pub(crate) fn write_open_tag(&self, w: &mut BufWriter) {
-            let _ = w.write_str("<!--");
-            let _ = w.write_str(self.open_start_mark());
-
-            #[cfg(debug_assertions)]
-            match self {
-                Self::Component(type_name) => {
-                    let _ = w.write_str(type_name);
-                }
-                Self::Raw => {}
-                Self::Suspense => {}
-            }
-
-            let _ = w.write_str(self.end_mark());
-            let _ = w.write_str("-->");
-        }
-
-        pub(crate) fn write_close_tag(&self, w: &mut BufWriter) {
-            let _ = w.write_str("<!--");
-            let _ = w.write_str(self.close_start_mark());
-
-            #[cfg(debug_assertions)]
-            match self {
-                Self::Component(type_name) => {
-                    let _ = w.write_str(type_name);
-                }
-                Self::Raw => {}
-                Self::Suspense => {}
-            }
-
-            let _ = w.write_str(self.end_mark());
-            let _ = w.write_str("-->");
-        }
-    }
-}
 
 /// Defines if the [`Attributes`] is set as element's attribute or property and its value.
 #[allow(missing_docs)]

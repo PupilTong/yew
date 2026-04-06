@@ -491,41 +491,6 @@ impl Reconcilable for VList {
     }
 }
 
-#[cfg(feature = "hydration")]
-mod feat_hydration {
-    use super::*;
-    use crate::dom_bundle::{DynamicDomSlot, Fragment, Hydratable};
-
-    impl Hydratable for VList {
-        fn hydrate(
-            self,
-            root: &BSubtree,
-            parent_scope: &AnyScope,
-            parent: &Element,
-            fragment: &mut Fragment,
-            prev_next_sibling: &mut Option<DynamicDomSlot>,
-        ) -> Self::Bundle {
-            let (key, fully_keyed, vchildren) = self.split_for_blist();
-
-            let mut children = Vec::with_capacity(vchildren.len());
-
-            for child in vchildren.into_iter() {
-                let child = child.hydrate(root, parent_scope, parent, fragment, prev_next_sibling);
-
-                children.push(child);
-            }
-
-            children.reverse();
-
-            BList {
-                rev_children: children,
-                fully_keyed,
-                key,
-            }
-        }
-    }
-}
-
 #[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
 #[cfg(test)]
 mod layout_tests {

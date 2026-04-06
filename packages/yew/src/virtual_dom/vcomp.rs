@@ -4,23 +4,17 @@ use std::any::{Any, TypeId};
 use std::fmt;
 use std::rc::Rc;
 
-#[cfg(feature = "ssr")]
-use futures::future::{FutureExt, LocalBoxFuture};
 #[cfg(feature = "csr")]
 use web_sys::Element;
 
 use super::Key;
-#[cfg(feature = "hydration")]
-use crate::dom_bundle::Fragment;
 #[cfg(feature = "csr")]
 use crate::dom_bundle::{BSubtree, DomSlot, DynamicDomSlot};
 use crate::html::BaseComponent;
 #[cfg(feature = "csr")]
 use crate::html::Scoped;
-#[cfg(any(feature = "ssr", feature = "csr"))]
+#[cfg(feature = "csr")]
 use crate::html::{AnyScope, Scope};
-#[cfg(feature = "ssr")]
-use crate::{feat_ssr::VTagKind, platform::fmt::BufWriter};
 
 /// A virtual component.
 pub struct VComp {
@@ -69,25 +63,6 @@ pub(crate) trait Mountable {
 
     #[cfg(feature = "csr")]
     fn reuse(self: Box<Self>, scope: &dyn Scoped, slot: DomSlot);
-
-    #[cfg(feature = "ssr")]
-    fn render_into_stream<'a>(
-        &'a self,
-        w: &'a mut BufWriter,
-        parent_scope: &'a AnyScope,
-        hydratable: bool,
-        parent_vtag_kind: VTagKind,
-    ) -> LocalBoxFuture<'a, ()>;
-
-    #[cfg(feature = "hydration")]
-    fn hydrate(
-        self: Box<Self>,
-        root: BSubtree,
-        parent_scope: &AnyScope,
-        parent: Element,
-        fragment: &mut Fragment,
-        prev_next_sibling: &mut Option<DynamicDomSlot>,
-    ) -> (Box<dyn Scoped>, DynamicDomSlot);
 }
 
 pub(crate) struct PropsWrapper<COMP: BaseComponent> {
@@ -137,40 +112,6 @@ impl<COMP: BaseComponent> Mountable for PropsWrapper<COMP> {
     fn reuse(self: Box<Self>, scope: &dyn Scoped, slot: DomSlot) {
         let scope: Scope<COMP> = scope.to_any().downcast::<COMP>();
         scope.reuse(self.props, slot);
-    }
-
-    #[cfg(feature = "ssr")]
-    fn render_into_stream<'a>(
-        &'a self,
-        w: &'a mut BufWriter,
-        parent_scope: &'a AnyScope,
-        hydratable: bool,
-        parent_vtag_kind: VTagKind,
-    ) -> LocalBoxFuture<'a, ()> {
-        let scope: Scope<COMP> = Scope::new(Some(parent_scope.clone()));
-
-        async move {
-            scope
-                .render_into_stream(w, self.props.clone(), hydratable, parent_vtag_kind)
-                .await;
-        }
-        .boxed_local()
-    }
-
-    #[cfg(feature = "hydration")]
-    fn hydrate(
-        self: Box<Self>,
-        root: BSubtree,
-        parent_scope: &AnyScope,
-        parent: Element,
-        fragment: &mut Fragment,
-        prev_next_sibling: &mut Option<DynamicDomSlot>,
-    ) -> (Box<dyn Scoped>, DynamicDomSlot) {
-        let scope: Scope<COMP> = Scope::new(Some(parent_scope.clone()));
-        let own_slot =
-            scope.hydrate_in_place(root, parent, fragment, self.props, prev_next_sibling);
-
-        (Box::new(scope), own_slot)
     }
 }
 
@@ -261,69 +202,5 @@ impl PartialEq for VComp {
 impl<COMP: BaseComponent> fmt::Debug for VChild<COMP> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("VChild<_>")
-    }
-}
-
-#[cfg(feature = "ssr")]
-mod feat_ssr {
-    use super::*;
-    use crate::html::AnyScope;
-
-    impl VComp {
-        #[inline]
-        pub(crate) async fn render_into_stream(
-            &self,
-            w: &mut BufWriter,
-            parent_scope: &AnyScope,
-            hydratable: bool,
-            parent_vtag_kind: VTagKind,
-        ) {
-            self.mountable
-                .as_ref()
-                .render_into_stream(w, parent_scope, hydratable, parent_vtag_kind)
-                .await;
-        }
-    }
-}
-
-#[cfg(all(test, not(target_arch = "wasm32"), feature = "ssr"))]
-mod ssr_tests {
-    use tokio::test;
-
-    use crate::prelude::*;
-    use crate::ServerRenderer;
-
-    #[test]
-    async fn test_props() {
-        #[derive(PartialEq, Properties, Debug)]
-        struct ChildProps {
-            name: String,
-        }
-
-        #[component]
-        fn Child(props: &ChildProps) -> Html {
-            html! { <div>{"Hello, "}{&props.name}{"!"}</div> }
-        }
-
-        #[component]
-        fn Comp() -> Html {
-            html! {
-                <div>
-                    <Child name="Jane" />
-                    <Child name="John" />
-                    <Child name="Josh" />
-                </div>
-            }
-        }
-
-        let s = ServerRenderer::<Comp>::new()
-            .hydratable(false)
-            .render()
-            .await;
-
-        assert_eq!(
-            s,
-            "<div><div>Hello, Jane!</div><div>Hello, John!</div><div>Hello, Josh!</div></div>"
-        );
     }
 }

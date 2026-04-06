@@ -53,18 +53,6 @@ mod trap_impl {
         // A special marker element that should not be referenced
         static TRAP: Node = gloo::utils::document().create_element("div").unwrap().into();
     }
-    /// Get a "trap" node, or None if compiled without debug_assertions
-    #[cfg(feature = "hydration")]
-    pub fn get_trap_node() -> Option<Node> {
-        #[cfg(debug_assertions)]
-        {
-            TRAP.with(|trap| Some(trap.clone()))
-        }
-        #[cfg(not(debug_assertions))]
-        {
-            None
-        }
-    }
     #[inline]
     pub fn is_trap(node: &Node) -> bool {
         #[cfg(debug_assertions)]
@@ -95,13 +83,6 @@ impl DomSlot {
         Self {
             variant: DomSlotVariant::Node(next_sibling),
         }
-    }
-
-    /// A new "placeholder" [DomSlot] that should not be used to insert nodes
-    #[inline]
-    #[cfg(feature = "hydration")]
-    pub fn new_debug_trapped() -> Self {
-        Self::create(trap_impl::get_trap_node())
     }
 
     /// Get the [Node] that comes just after the position, or `None` if this denotes the position at
@@ -165,19 +146,6 @@ impl DynamicDomSlot {
         Self {
             target: Rc::new(RefCell::new(initial_position)),
         }
-    }
-
-    #[cfg(feature = "hydration")]
-    pub fn new_debug_trapped() -> Self {
-        Self::new(DomSlot::new_debug_trapped())
-    }
-
-    /// Move out of self, leaving behind a trapped slot. `self` should not be used afterwards.
-    /// Used during the transition from a hydrating to a rendered component to move state between
-    /// enum variants.
-    #[cfg(feature = "hydration")]
-    pub fn take(&mut self) -> Self {
-        std::mem::replace(self, Self::new(DomSlot::new_debug_trapped()))
     }
 
     /// Change the [`DomSlot`] that is targeted. Subsequently, this will behave as if `self` was
@@ -294,7 +262,6 @@ mod layout_tests {
     fn debug_printing() {
         // basic tests that these don't panic. We don't enforce any specific format.
         println!("At end: {:?}", DomSlot::at_end());
-        println!("Trapped: {:?}", DomSlot::new_debug_trapped());
         println!(
             "At element: {:?}",
             DomSlot::at(document().create_element("p").unwrap().into())
