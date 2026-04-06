@@ -14,7 +14,6 @@ mod bcomp;
 mod blist;
 mod bnode;
 mod bportal;
-mod braw;
 mod bsuspense;
 mod btag;
 mod btext;
@@ -28,7 +27,6 @@ use bcomp::BComp;
 use blist::BList;
 use bnode::BNode;
 use bportal::BPortal;
-use braw::BRaw;
 use bsuspense::BSuspense;
 use btag::{BTag, Registry};
 use btext::BText;
@@ -76,30 +74,3 @@ impl Bundle {
     }
 }
 
-#[cfg(feature = "hydration")]
-#[path = "."]
-mod feat_hydration {
-    pub(super) use super::traits::Hydratable;
-    pub(super) use super::utils::node_type_str;
-    #[path = "./fragment.rs"]
-    mod fragment;
-    pub(crate) use fragment::Fragment;
-
-    use super::*;
-    impl Bundle {
-        /// Creates a bundle by hydrating a virtual dom layout.
-        pub fn hydrate(
-            root: &BSubtree,
-            parent_scope: &AnyScope,
-            parent: &Element,
-            fragment: &mut Fragment,
-            node: VNode,
-            previous_next_sibling: &mut Option<DynamicDomSlot>,
-        ) -> Self {
-            let bundle = node.hydrate(root, parent_scope, parent, fragment, previous_next_sibling);
-            Self(bundle)
-        }
-    }
-}
-#[cfg(feature = "hydration")]
-pub(crate) use feat_hydration::*;

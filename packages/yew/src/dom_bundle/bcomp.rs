@@ -112,45 +112,6 @@ impl Reconcilable for VComp {
     }
 }
 
-#[cfg(feature = "hydration")]
-mod feat_hydration {
-    use super::*;
-    use crate::dom_bundle::{Fragment, Hydratable};
-
-    impl Hydratable for VComp {
-        fn hydrate(
-            self,
-            root: &BSubtree,
-            parent_scope: &AnyScope,
-            parent: &Element,
-            fragment: &mut Fragment,
-            prev_next_sibling: &mut Option<DynamicDomSlot>,
-        ) -> Self::Bundle {
-            let VComp {
-                type_id,
-                mountable,
-                key,
-                ..
-            } = self;
-
-            let (scope, own_slot) = mountable.hydrate(
-                root.clone(),
-                parent_scope,
-                parent.clone(),
-                fragment,
-                prev_next_sibling,
-            );
-
-            BComp {
-                type_id,
-                scope,
-                own_position: own_slot,
-                key,
-            }
-        }
-    }
-}
-
 #[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
 #[cfg(test)]
 mod tests {

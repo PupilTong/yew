@@ -97,34 +97,3 @@ pub(super) trait Reconcilable {
     }
 }
 
-#[cfg(feature = "hydration")]
-mod feat_hydration {
-    use super::*;
-    use crate::dom_bundle::{DynamicDomSlot, Fragment};
-
-    pub(in crate::dom_bundle) trait Hydratable: Reconcilable {
-        /// hydrates current tree.
-        ///
-        /// Returns a reference to the first node of the hydrated tree.
-        ///
-        /// # Important
-        ///
-        /// DOM tree is hydrated from top to bottom. This is different than [`Reconcilable`].
-        fn hydrate(
-            self,
-            root: &BSubtree,
-            parent_scope: &AnyScope,
-            parent: &Element,
-            fragment: &mut Fragment,
-            // We hydrate in document order, but need to know the "next sibling" in each component
-            // to shift elements. (blame Web API for having `Node.insertBefore` but no
-            // `Node.insertAfter`) Hence, we pass an optional argument to inform of the
-            // new hydrated node's position. This should end up assigning the same
-            // position that would have been returned from `Self::attach` on creation.
-            prev_next_sibling: &mut Option<DynamicDomSlot>,
-        ) -> Self::Bundle;
-    }
-}
-
-#[cfg(feature = "hydration")]
-pub(in crate::dom_bundle) use feat_hydration::*;

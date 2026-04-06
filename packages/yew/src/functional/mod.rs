@@ -27,8 +27,6 @@ use std::rc::Rc;
 
 use wasm_bindgen::prelude::*;
 
-#[cfg(all(feature = "hydration", feature = "ssr"))]
-use crate::html::RenderMode;
 use crate::html::{AnyScope, BaseComponent, Context, HtmlResult};
 use crate::Properties;
 
@@ -69,13 +67,6 @@ pub use yew_macro::hook;
 
 type ReRender = Rc<dyn Fn()>;
 
-/// Primitives of a prepared state hook.
-#[cfg(any(feature = "hydration", feature = "ssr"))]
-pub(crate) trait PreparedState {
-    #[cfg(feature = "ssr")]
-    fn prepare(&self) -> String;
-}
-
 /// Primitives of an effect hook.
 pub(crate) trait Effect {
     fn rendered(&self) {}
@@ -84,20 +75,10 @@ pub(crate) trait Effect {
 /// A hook context to be passed to hooks.
 pub struct HookContext {
     pub(crate) scope: AnyScope,
-    #[cfg(all(feature = "hydration", feature = "ssr"))]
-    creation_mode: RenderMode,
     re_render: ReRender,
 
     states: Vec<Rc<dyn Any>>,
     effects: Vec<Rc<dyn Effect>>,
-
-    #[cfg(any(feature = "hydration", feature = "ssr"))]
-    prepared_states: Vec<Rc<dyn PreparedState>>,
-
-    #[cfg(feature = "hydration")]
-    prepared_states_data: Vec<Rc<str>>,
-    #[cfg(feature = "hydration")]
-    prepared_state_counter: usize,
 
     counter: usize,
     #[cfg(debug_assertions)]
@@ -108,31 +89,13 @@ impl HookContext {
     fn new(
         scope: AnyScope,
         re_render: ReRender,
-        #[cfg(all(feature = "hydration", feature = "ssr"))] creation_mode: RenderMode,
-        #[cfg(feature = "hydration")] prepared_state: Option<&str>,
     ) -> RefCell<Self> {
         RefCell::new(HookContext {
             scope,
             re_render,
 
-            #[cfg(all(feature = "hydration", feature = "ssr"))]
-            creation_mode,
-
             states: Vec::new(),
-
-            #[cfg(any(feature = "hydration", feature = "ssr"))]
-            prepared_states: Vec::new(),
             effects: Vec::new(),
-
-            #[cfg(feature = "hydration")]
-            prepared_states_data: {
-                match prepared_state {
-                    Some(m) => m.split(',').map(Rc::from).collect(),
-                    None => Vec::new(),
-                }
-            },
-            #[cfg(feature = "hydration")]
-            prepared_state_counter: 0,
 
             counter: 0,
             #[cfg(debug_assertions)]
@@ -176,43 +139,8 @@ impl HookContext {
         t
     }
 
-    #[cfg(any(feature = "hydration", feature = "ssr"))]
-    pub(crate) fn next_prepared_state<T>(
-        &mut self,
-        initializer: impl FnOnce(ReRender, Option<&str>) -> T,
-    ) -> Rc<T>
-    where
-        T: 'static + PreparedState,
-    {
-        #[cfg(not(feature = "hydration"))]
-        let prepared_state = Option::<Rc<str>>::None;
-
-        #[cfg(feature = "hydration")]
-        let prepared_state = {
-            let prepared_state_pos = self.prepared_state_counter;
-            self.prepared_state_counter += 1;
-
-            self.prepared_states_data.get(prepared_state_pos).cloned()
-        };
-
-        let prev_state_len = self.states.len();
-        let t = self.next_state(move |re_render| initializer(re_render, prepared_state.as_deref()));
-
-        // This is a new effect, we add it to effects.
-        if self.states.len() != prev_state_len {
-            self.prepared_states.push(t.clone());
-        }
-
-        t
-    }
-
     #[inline(always)]
     fn prepare_run(&mut self) {
-        #[cfg(feature = "hydration")]
-        {
-            self.prepared_state_counter = 0;
-        }
-
         self.counter = 0;
     }
 
@@ -264,27 +192,8 @@ impl HookContext {
         }
     }
 
-    #[cfg(not(feature = "ssr"))]
     fn prepare_state(&self) -> Option<String> {
         None
-    }
-
-    #[cfg(feature = "ssr")]
-    fn prepare_state(&self) -> Option<String> {
-        if self.prepared_states.is_empty() {
-            return None;
-        }
-
-        let prepared_states = self.prepared_states.clone();
-
-        let mut states = Vec::new();
-
-        for state in prepared_states.iter() {
-            let state = state.prepare();
-            states.push(state);
-        }
-
-        Some(states.join(","))
     }
 }
 
@@ -344,10 +253,6 @@ where
             hook_ctx: HookContext::new(
                 scope,
                 re_render,
-                #[cfg(all(feature = "hydration", feature = "ssr"))]
-                ctx.creation_mode(),
-                #[cfg(feature = "hydration")]
-                ctx.prepared_state(),
             ),
         }
     }

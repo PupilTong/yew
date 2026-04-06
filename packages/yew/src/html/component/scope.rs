@@ -9,13 +9,13 @@ use std::{fmt, iter};
 
 use futures::{Stream, StreamExt};
 
-#[cfg(any(feature = "csr", feature = "ssr"))]
+#[cfg(feature = "csr")]
 use super::lifecycle::ComponentState;
 use super::BaseComponent;
 use crate::callback::Callback;
 use crate::context::{ContextHandle, ContextProvider};
 use crate::platform::spawn_local;
-#[cfg(any(feature = "csr", feature = "ssr"))]
+#[cfg(feature = "csr")]
 use crate::scheduler::Shared;
 
 /// Untyped scope used for accessing parent scope
@@ -95,10 +95,10 @@ pub struct Scope<COMP: BaseComponent> {
     _marker: PhantomData<COMP>,
     parent: Option<Rc<AnyScope>>,
 
-    #[cfg(any(feature = "csr", feature = "ssr"))]
+    #[cfg(feature = "csr")]
     pub(crate) pending_messages: MsgQueue<COMP::Message>,
 
-    #[cfg(any(feature = "csr", feature = "ssr"))]
+    #[cfg(feature = "csr")]
     pub(crate) state: Shared<Option<ComponentState>>,
 
     pub(crate) id: usize,
@@ -115,11 +115,11 @@ impl<COMP: BaseComponent> Clone for Scope<COMP> {
         Scope {
             _marker: PhantomData,
 
-            #[cfg(any(feature = "csr", feature = "ssr"))]
+            #[cfg(feature = "csr")]
             pending_messages: self.pending_messages.clone(),
             parent: self.parent.clone(),
 
-            #[cfg(any(feature = "csr", feature = "ssr"))]
+            #[cfg(feature = "csr")]
             state: self.state.clone(),
 
             id: self.id,
@@ -289,82 +289,7 @@ impl<COMP: BaseComponent> Scope<COMP> {
     }
 }
 
-#[cfg(feature = "ssr")]
-mod feat_ssr {
-    use std::fmt::Write;
-
-    use super::*;
-    use crate::feat_ssr::VTagKind;
-    use crate::html::component::lifecycle::{
-        ComponentRenderState, CreateRunner, DestroyRunner, RenderRunner,
-    };
-    use crate::platform::fmt::BufWriter;
-    use crate::platform::pinned::oneshot;
-    use crate::scheduler;
-    use crate::virtual_dom::Collectable;
-
-    impl<COMP: BaseComponent> Scope<COMP> {
-        pub(crate) async fn render_into_stream(
-            &self,
-            w: &mut BufWriter,
-            props: Rc<COMP::Properties>,
-            hydratable: bool,
-            parent_vtag_kind: VTagKind,
-        ) {
-            // Rust's Future implementation is stack-allocated and incurs zero runtime-cost.
-            //
-            // If the content of this channel is ready before it is awaited, it is
-            // similar to taking the value from a mutex lock.
-            let (tx, rx) = oneshot::channel();
-            let state = ComponentRenderState::Ssr { sender: Some(tx) };
-
-            scheduler::push_component_create(
-                self.id,
-                Box::new(CreateRunner {
-                    initial_render_state: state,
-                    props,
-                    scope: self.clone(),
-                    #[cfg(feature = "hydration")]
-                    prepared_state: None,
-                }),
-                Box::new(RenderRunner {
-                    state: self.state.clone(),
-                }),
-            );
-            scheduler::start();
-
-            let collectable = Collectable::for_component::<COMP>();
-
-            if hydratable {
-                collectable.write_open_tag(w);
-            }
-
-            let html = rx.await.unwrap();
-
-            let self_any_scope = AnyScope::from(self.clone());
-            html.render_into_stream(w, &self_any_scope, hydratable, parent_vtag_kind)
-                .await;
-
-            if let Some(prepared_state) = self.get_component().unwrap().prepare_state() {
-                let _ = w.write_str(r#"<script type="application/x-yew-comp-state">"#);
-                let _ = w.write_str(&prepared_state);
-                let _ = w.write_str(r#"</script>"#);
-            }
-
-            if hydratable {
-                collectable.write_close_tag(w);
-            }
-
-            scheduler::push_component_destroy(Box::new(DestroyRunner {
-                state: self.state.clone(),
-                parent_to_detach: false,
-            }));
-            scheduler::start();
-        }
-    }
-}
-
-#[cfg(not(any(feature = "ssr", feature = "csr")))]
+#[cfg(not(feature = "csr"))]
 mod feat_no_csr_ssr {
     use super::*;
 
@@ -384,7 +309,7 @@ mod feat_no_csr_ssr {
     }
 }
 
-#[cfg(any(feature = "ssr", feature = "csr"))]
+#[cfg(feature = "csr")]
 mod feat_csr_ssr {
     use std::cell::{Ref, RefCell};
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -496,7 +421,7 @@ mod feat_csr_ssr {
     }
 }
 
-#[cfg(any(feature = "ssr", feature = "csr"))]
+#[cfg(feature = "csr")]
 pub(crate) use feat_csr_ssr::*;
 
 #[cfg(feature = "csr")]
@@ -568,8 +493,6 @@ mod feat_csr {
                     initial_render_state: state,
                     props,
                     scope: self.clone(),
-                    #[cfg(feature = "hydration")]
-                    prepared_state: None,
                 }),
                 Box::new(RenderRunner {
                     state: self.state.clone(),
@@ -636,101 +559,6 @@ mod feat_csr {
 }
 #[cfg(feature = "csr")]
 pub(crate) use feat_csr::*;
-
-#[cfg(feature = "hydration")]
-mod feat_hydration {
-    use wasm_bindgen::JsCast;
-    use web_sys::{Element, HtmlScriptElement};
-
-    use super::*;
-    use crate::dom_bundle::{BSubtree, DomSlot, DynamicDomSlot, Fragment};
-    use crate::html::component::lifecycle::{ComponentRenderState, CreateRunner, RenderRunner};
-    use crate::scheduler;
-    use crate::virtual_dom::Collectable;
-
-    impl<COMP> Scope<COMP>
-    where
-        COMP: BaseComponent,
-    {
-        /// Hydrates the component.
-        ///
-        /// Returns the position of the hydrated node in DOM.
-        ///
-        /// # Note
-        ///
-        /// This method is expected to collect all the elements belongs to the current component
-        /// immediately.
-        pub(crate) fn hydrate_in_place(
-            &self,
-            root: BSubtree,
-            parent: Element,
-            fragment: &mut Fragment,
-            props: Rc<COMP::Properties>,
-            prev_next_sibling: &mut Option<DynamicDomSlot>,
-        ) -> DynamicDomSlot {
-            // This is very helpful to see which component is failing during hydration
-            // which means this component may not having a stable layout / differs between
-            // client-side and server-side.
-            tracing::trace!(
-                component.id = self.id,
-                "hydration(type = {})",
-                std::any::type_name::<COMP>()
-            );
-
-            let collectable = Collectable::for_component::<COMP>();
-
-            let mut fragment = Fragment::collect_between(fragment, &collectable, &parent);
-
-            let prepared_state = match fragment
-                .back()
-                .cloned()
-                .and_then(|m| m.dyn_into::<HtmlScriptElement>().ok())
-            {
-                Some(m) if m.type_() == "application/x-yew-comp-state" => {
-                    fragment.pop_back();
-                    parent.remove_child(&m).unwrap();
-                    Some(m.text().unwrap())
-                }
-                _ => None,
-            };
-
-            let own_slot = match fragment.front().cloned() {
-                Some(first_node) => DynamicDomSlot::new(DomSlot::at(first_node)),
-                None => DynamicDomSlot::new(DomSlot::at_end()),
-            };
-            let shared_slot = own_slot.clone();
-            let sibling_slot = DynamicDomSlot::new_debug_trapped();
-            if let Some(prev_next_sibling) = prev_next_sibling {
-                prev_next_sibling.reassign(shared_slot.to_position());
-            }
-            *prev_next_sibling = Some(sibling_slot.clone());
-            let state = ComponentRenderState::Hydration {
-                parent,
-                root,
-                own_slot,
-                sibling_slot,
-                fragment,
-            };
-
-            scheduler::push_component_create(
-                self.id,
-                Box::new(CreateRunner {
-                    initial_render_state: state,
-                    props,
-                    scope: self.clone(),
-                    prepared_state,
-                }),
-                Box::new(RenderRunner {
-                    state: self.state.clone(),
-                }),
-            );
-
-            // Not guaranteed to already have the scheduler started
-            scheduler::start();
-            shared_slot
-        }
-    }
-}
 
 /// Defines a message type that can be sent to a component.
 /// Used for the return value of closure given to

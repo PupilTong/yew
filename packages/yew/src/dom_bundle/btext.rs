@@ -86,66 +86,6 @@ impl std::fmt::Debug for BText {
     }
 }
 
-#[cfg(feature = "hydration")]
-mod feat_hydration {
-    use wasm_bindgen::JsCast;
-    use web_sys::Node;
-
-    use super::*;
-    use crate::dom_bundle::{DynamicDomSlot, Fragment, Hydratable};
-
-    impl Hydratable for VText {
-        fn hydrate(
-            self,
-            _root: &BSubtree,
-            _parent_scope: &AnyScope,
-            parent: &Element,
-            fragment: &mut Fragment,
-            previous_next_sibling: &mut Option<DynamicDomSlot>,
-        ) -> Self::Bundle {
-            let create_at = |next_sibling: Option<Node>, text: AttrValue| {
-                // If there are multiple text nodes placed back-to-back in SSR, it may be parsed as
-                // a single text node by browser, hence we need to add extra text
-                // nodes here if the next node is not a text node. Similarly, the
-                // value of the text node may be a combination of multiple VText
-                // vnodes. So we always need to override their values.
-                let text_node = document().create_text_node(text.as_ref());
-                DomSlot::create(next_sibling).insert(parent, &text_node);
-                BText { text, text_node }
-            };
-            let btext = if let Some(m) = fragment.front().cloned() {
-                if m.node_type() == Node::TEXT_NODE {
-                    let m = m.unchecked_into::<TextNode>();
-                    // pop current node.
-                    fragment.pop_front();
-
-                    // TODO: It may make sense to assert the text content in the text node
-                    // against the VText when #[cfg(debug_assertions)]
-                    // is true, but this may be complicated.
-                    // We always replace the text value for now.
-                    //
-                    // Please see the next comment for a detailed explanation.
-                    m.set_node_value(Some(self.text.as_ref()));
-
-                    BText {
-                        text: self.text,
-                        text_node: m,
-                    }
-                } else {
-                    create_at(Some(m), self.text)
-                }
-            } else {
-                create_at(fragment.sibling_at_end().cloned(), self.text)
-            };
-            if let Some(previous_next_sibling) = previous_next_sibling {
-                previous_next_sibling.reassign(DomSlot::at(btext.text_node.clone().into()));
-            }
-            *previous_next_sibling = None;
-            btext
-        }
-    }
-}
-
 #[cfg(test)]
 mod test {
     extern crate self as yew;

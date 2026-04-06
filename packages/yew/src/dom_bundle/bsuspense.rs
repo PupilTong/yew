@@ -3,8 +3,6 @@
 use gloo::utils::document;
 use web_sys::Element;
 
-#[cfg(feature = "hydration")]
-use super::Fragment;
 use super::{BNode, BSubtree, DomSlot, Reconcilable, ReconcileTarget};
 use crate::html::AnyScope;
 use crate::virtual_dom::{Key, VSuspense};
@@ -13,9 +11,6 @@ use crate::virtual_dom::{Key, VSuspense};
 enum Fallback {
     /// Suspense Fallback with fallback being rendered as placeholder.
     Bundle(BNode),
-    /// Suspense Fallback with Hydration Fragment being rendered as placeholder.
-    #[cfg(feature = "hydration")]
-    Fragment(Fragment),
 }
 
 /// The bundle implementation to [VSuspense]
@@ -39,16 +34,8 @@ impl ReconcileTarget for BSuspense {
     fn detach(self, root: &BSubtree, parent: &Element, parent_to_detach: bool) {
         match self.fallback {
             Some(m) => {
-                match m {
-                    Fallback::Bundle(bundle) => {
-                        bundle.detach(root, parent, parent_to_detach);
-                    }
-
-                    #[cfg(feature = "hydration")]
-                    Fallback::Fragment(fragment) => {
-                        fragment.detach(root, parent, parent_to_detach);
-                    }
-                }
+                let Fallback::Bundle(bundle) = m;
+                bundle.detach(root, parent, parent_to_detach);
 
                 self.children_bundle
                     .detach(root, &self.detached_parent, false);
@@ -62,8 +49,6 @@ impl ReconcileTarget for BSuspense {
     fn shift(&self, next_parent: &Element, slot: DomSlot) -> DomSlot {
         match self.fallback.as_ref() {
             Some(Fallback::Bundle(bundle)) => bundle.shift(next_parent, slot),
-            #[cfg(feature = "hydration")]
-            Some(Fallback::Fragment(fragment)) => fragment.shift(next_parent, slot),
             None => self.children_bundle.shift(next_parent, slot),
         }
     }
@@ -166,16 +151,8 @@ impl Reconcilable for VSuspense {
                     children_bundle,
                 );
 
-                match fallback {
-                    Fallback::Bundle(bundle) => {
-                        vfallback.reconcile_node(root, parent_scope, parent, slot, bundle)
-                    }
-                    #[cfg(feature = "hydration")]
-                    Fallback::Fragment(fragment) => match fragment.front().cloned() {
-                        Some(m) => DomSlot::at(m),
-                        None => slot,
-                    },
-                }
+                let Fallback::Bundle(bundle) = fallback;
+                vfallback.reconcile_node(root, parent_scope, parent, slot, bundle)
             }
             // Not suspended, just reconcile the children into the DOM
             (false, None) => {
@@ -205,10 +182,6 @@ impl Reconcilable for VSuspense {
                     Some(Fallback::Bundle(bundle)) => {
                         bundle.detach(root, parent, false);
                     }
-                    #[cfg(feature = "hydration")]
-                    Some(Fallback::Fragment(fragment)) => {
-                        fragment.detach(root, parent, false);
-                    }
                     None => {
                         unreachable!("None condition has been checked before.")
                     }
@@ -221,58 +194,3 @@ impl Reconcilable for VSuspense {
     }
 }
 
-#[cfg(feature = "hydration")]
-mod feat_hydration {
-    use super::*;
-    use crate::dom_bundle::{DynamicDomSlot, Fragment, Hydratable};
-    use crate::virtual_dom::Collectable;
-
-    impl Hydratable for VSuspense {
-        fn hydrate(
-            self,
-            root: &BSubtree,
-            parent_scope: &AnyScope,
-            parent: &Element,
-            fragment: &mut Fragment,
-            previous_next_sibling: &mut Option<DynamicDomSlot>,
-        ) -> Self::Bundle {
-            let detached_parent = document()
-                .create_element("div")
-                .expect("failed to create detached element");
-
-            let collectable = Collectable::Suspense;
-            let fallback_fragment = Fragment::collect_between(fragment, &collectable, parent);
-
-            let mut nodes = fallback_fragment.deep_clone();
-
-            for node in nodes.iter() {
-                detached_parent.append_child(node).unwrap();
-            }
-
-            // Even if initially suspended, these children correspond to the first non-suspended
-            // content Refer to VSuspense::render_to_string
-            let children_bundle = self.children.hydrate(
-                root,
-                parent_scope,
-                &detached_parent,
-                &mut nodes,
-                previous_next_sibling,
-            );
-
-            // We trim all leading text nodes before checking as it's likely these are whitespaces.
-            nodes.trim_start_text_nodes();
-
-            assert!(nodes.is_empty(), "expected end of suspense, found node.");
-
-            BSuspense {
-                children_bundle,
-                detached_parent,
-                key: self.key,
-
-                // We start hydration with the BSuspense being suspended.
-                // A subsequent render will resume the BSuspense if not needed to be suspended.
-                fallback: Some(Fallback::Fragment(fallback_fragment)),
-            }
-        }
-    }
-}

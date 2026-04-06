@@ -68,7 +68,7 @@ struct TopologicalQueue {
 }
 
 impl TopologicalQueue {
-    #[cfg(any(feature = "ssr", feature = "csr"))]
+    #[cfg(feature = "csr")]
     fn push(&mut self, component_id: usize, task: Box<dyn Runnable>) {
         self.inner.insert(component_id, QueueEntry { task });
     }
@@ -134,7 +134,7 @@ pub fn push(runnable: Box<dyn Runnable>) {
     start();
 }
 
-#[cfg(any(feature = "ssr", feature = "csr"))]
+#[cfg(feature = "csr")]
 mod feat_csr_ssr {
     use super::*;
     /// Push a component creation, first render and first rendered [Runnable]s to be executed
@@ -167,7 +167,7 @@ mod feat_csr_ssr {
     }
 }
 
-#[cfg(any(feature = "ssr", feature = "csr"))]
+#[cfg(feature = "csr")]
 pub(crate) use feat_csr_ssr::*;
 
 #[cfg(feature = "csr")]
@@ -195,20 +195,6 @@ mod feat_csr {
 
 #[cfg(feature = "csr")]
 pub(crate) use feat_csr::*;
-
-#[cfg(feature = "hydration")]
-mod feat_hydration {
-    use super::*;
-
-    pub(crate) fn push_component_priority_render(component_id: usize, render: Box<dyn Runnable>) {
-        with(|s| {
-            s.render_priority.push(component_id, render);
-        });
-    }
-}
-
-#[cfg(feature = "hydration")]
-pub(crate) use feat_hydration::*;
 
 /// Execute any pending [Runnable]s
 pub(crate) fn start_now() {

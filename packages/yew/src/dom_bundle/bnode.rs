@@ -4,7 +4,7 @@ use std::fmt;
 
 use web_sys::{Element, Node};
 
-use super::{BComp, BList, BPortal, BRaw, BSubtree, BSuspense, BTag, BText, DomSlot};
+use super::{BComp, BList, BPortal, BSubtree, BSuspense, BTag, BText, DomSlot};
 use crate::dom_bundle::{Reconcilable, ReconcileTarget};
 use crate::html::AnyScope;
 use crate::utils::RcExt;
@@ -26,8 +26,6 @@ pub(super) enum BNode {
     Ref(Node),
     /// A suspendible document fragment.
     Suspense(Box<BSuspense>),
-    /// A raw HTML string, represented by [`AttrValue`](crate::AttrValue).
-    Raw(BRaw),
 }
 
 impl BNode {
@@ -41,7 +39,6 @@ impl BNode {
             Self::Text(_) => None,
             Self::Portal(bportal) => bportal.key(),
             Self::Suspense(bsusp) => bsusp.key(),
-            Self::Raw(_) => None,
         }
     }
 }
@@ -62,7 +59,6 @@ impl ReconcileTarget for BNode {
             }
             Self::Portal(bportal) => bportal.detach(root, parent, parent_to_detach),
             Self::Suspense(bsusp) => bsusp.detach(root, parent, parent_to_detach),
-            Self::Raw(raw) => raw.detach(root, parent, parent_to_detach),
         }
     }
 
@@ -79,7 +75,6 @@ impl ReconcileTarget for BNode {
             }
             Self::Portal(ref vportal) => vportal.shift(next_parent, slot),
             Self::Suspense(ref vsuspense) => vsuspense.shift(next_parent, slot),
-            Self::Raw(ref braw) => braw.shift(next_parent, slot),
         }
     }
 }
@@ -127,10 +122,6 @@ impl Reconcilable for VNode {
                 let (node_ref, suspsense) =
                     RcExt::unwrap_or_clone(vsuspsense).attach(root, parent_scope, parent, slot);
                 (node_ref, suspsense.into())
-            }
-            VNode::VRaw(vraw) => {
-                let (node_ref, raw) = vraw.attach(root, parent_scope, parent, slot);
-                (node_ref, raw.into())
             }
         }
     }
@@ -195,7 +186,6 @@ impl Reconcilable for VNode {
                 slot,
                 bundle,
             ),
-            VNode::VRaw(vraw) => vraw.reconcile_node(root, parent_scope, parent, slot, bundle),
         }
     }
 }
@@ -242,13 +232,6 @@ impl From<BSuspense> for BNode {
     }
 }
 
-impl From<BRaw> for BNode {
-    #[inline]
-    fn from(braw: BRaw) -> Self {
-        Self::Raw(braw)
-    }
-}
-
 impl fmt::Debug for BNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
@@ -259,59 +242,6 @@ impl fmt::Debug for BNode {
             Self::Ref(ref vref) => write!(f, "VRef ( \"{}\" )", crate::utils::print_node(vref)),
             Self::Portal(ref vportal) => vportal.fmt(f),
             Self::Suspense(ref bsusp) => bsusp.fmt(f),
-            Self::Raw(ref braw) => braw.fmt(f),
-        }
-    }
-}
-
-#[cfg(feature = "hydration")]
-mod feat_hydration {
-    use super::*;
-    use crate::dom_bundle::{DynamicDomSlot, Fragment, Hydratable};
-
-    impl Hydratable for VNode {
-        fn hydrate(
-            self,
-            root: &BSubtree,
-            parent_scope: &AnyScope,
-            parent: &Element,
-            fragment: &mut Fragment,
-            prev_next_sibling: &mut Option<DynamicDomSlot>,
-        ) -> Self::Bundle {
-            match self {
-                VNode::VTag(vtag) => RcExt::unwrap_or_clone(vtag)
-                    .hydrate(root, parent_scope, parent, fragment, prev_next_sibling)
-                    .into(),
-                VNode::VText(vtext) => vtext
-                    .hydrate(root, parent_scope, parent, fragment, prev_next_sibling)
-                    .into(),
-                VNode::VComp(vcomp) => RcExt::unwrap_or_clone(vcomp)
-                    .hydrate(root, parent_scope, parent, fragment, prev_next_sibling)
-                    .into(),
-                VNode::VList(vlist) => RcExt::unwrap_or_clone(vlist)
-                    .hydrate(root, parent_scope, parent, fragment, prev_next_sibling)
-                    .into(),
-                // You cannot hydrate a VRef.
-                VNode::VRef(_) => {
-                    panic!(
-                        "VRef is not hydratable. Try moving it to a component mounted after an \
-                         effect."
-                    )
-                }
-                // You cannot hydrate a VPortal.
-                VNode::VPortal(_) => {
-                    panic!(
-                        "VPortal is not hydratable. Try creating your portal by delaying it with \
-                         use_effect."
-                    )
-                }
-                VNode::VSuspense(vsuspense) => RcExt::unwrap_or_clone(vsuspense)
-                    .hydrate(root, parent_scope, parent, fragment, prev_next_sibling)
-                    .into(),
-                VNode::VRaw(vraw) => vraw
-                    .hydrate(root, parent_scope, parent, fragment, prev_next_sibling)
-                    .into(),
-            }
         }
     }
 }

@@ -8,12 +8,8 @@ use web_sys::Element;
 
 use super::scope::{AnyScope, Scope};
 use super::BaseComponent;
-#[cfg(feature = "hydration")]
-use crate::dom_bundle::Fragment;
 #[cfg(feature = "csr")]
 use crate::dom_bundle::{BSubtree, Bundle, DomSlot, DynamicDomSlot};
-#[cfg(feature = "hydration")]
-use crate::html::RenderMode;
 use crate::html::{Html, RenderError};
 use crate::scheduler::{self, Runnable, Shared};
 use crate::suspense::{BaseSuspense, Suspension};
@@ -33,18 +29,6 @@ pub(crate) enum ComponentRenderState {
         /// Gets updated whenever this component re-renders and is shared with the bundle in which
         /// this component occurs.
         own_slot: DynamicDomSlot,
-    },
-    #[cfg(feature = "hydration")]
-    Hydration {
-        fragment: Fragment,
-        root: BSubtree,
-        parent: Element,
-        sibling_slot: DynamicDomSlot,
-        own_slot: DynamicDomSlot,
-    },
-    #[cfg(feature = "ssr")]
-    Ssr {
-        sender: Option<crate::platform::pinned::oneshot::Sender<Html>>,
     },
 }
 
@@ -66,34 +50,6 @@ impl std::fmt::Debug for ComponentRenderState {
                 .field("sibling_slot", sibling_slot)
                 .field("own_slot", own_slot)
                 .finish(),
-
-            #[cfg(feature = "hydration")]
-            Self::Hydration {
-                ref fragment,
-                ref parent,
-                ref sibling_slot,
-                ref own_slot,
-                ref root,
-            } => f
-                .debug_struct("ComponentRenderState::Hydration")
-                .field("fragment", fragment)
-                .field("root", root)
-                .field("parent", parent)
-                .field("sibling_slot", sibling_slot)
-                .field("own_slot", own_slot)
-                .finish(),
-
-            #[cfg(feature = "ssr")]
-            Self::Ssr { ref sender } => {
-                let sender_repr = match sender {
-                    Some(_) => "Some(_)",
-                    None => "None",
-                };
-
-                f.debug_struct("ComponentRenderState::Ssr")
-                    .field("sender", &sender_repr)
-                    .finish()
-            }
         }
     }
 }
@@ -112,23 +68,6 @@ impl ComponentRenderState {
                 *parent = next_parent;
                 sibling_slot.reassign(next_slot);
                 bundle.shift(parent, sibling_slot.to_position());
-            }
-            #[cfg(feature = "hydration")]
-            Self::Hydration {
-                fragment,
-                parent,
-                sibling_slot,
-                ..
-            } => {
-                *parent = next_parent;
-                sibling_slot.reassign(next_slot);
-                fragment.shift(parent, sibling_slot.to_position());
-            }
-
-            #[cfg(feature = "ssr")]
-            Self::Ssr { .. } => {
-                #[cfg(debug_assertions)]
-                panic!("shifting is not possible during SSR");
             }
         }
     }
@@ -160,9 +99,6 @@ pub(crate) trait Stateful {
     fn props_changed(&mut self, props: Rc<dyn Any>) -> bool;
 
     fn as_any(&self) -> &dyn Any;
-
-    #[cfg(feature = "hydration")]
-    fn creation_mode(&self) -> RenderMode;
 }
 
 impl<COMP> Stateful for CompStateInner<COMP>
@@ -184,11 +120,6 @@ where
 
     fn any_scope(&self) -> AnyScope {
         self.context.link().clone().into()
-    }
-
-    #[cfg(feature = "hydration")]
-    fn creation_mode(&self) -> RenderMode {
-        self.context.creation_mode()
     }
 
     fn flush_messages(&mut self) -> bool {
@@ -228,11 +159,6 @@ pub(crate) struct ComponentState {
 
     #[cfg(feature = "csr")]
     has_rendered: bool,
-    /// This deals with an edge case. Usually, we want to update props as fast as possible.
-    /// But, when a component hydrates and suspends, we want to continue using the initially given
-    /// props. This is prop updates are ignored during SSR, too.
-    #[cfg(feature = "hydration")]
-    pending_props: Option<Rc<dyn Any>>,
 
     suspension: Option<Suspension>,
 
@@ -250,26 +176,12 @@ impl ComponentState {
         initial_render_state: ComponentRenderState,
         scope: Scope<COMP>,
         props: Rc<COMP::Properties>,
-        #[cfg(feature = "hydration")] prepared_state: Option<String>,
     ) -> Self {
         let comp_id = scope.id;
-        #[cfg(feature = "hydration")]
-        let creation_mode = {
-            match initial_render_state {
-                ComponentRenderState::Render { .. } => RenderMode::Render,
-                ComponentRenderState::Hydration { .. } => RenderMode::Hydration,
-                #[cfg(feature = "ssr")]
-                ComponentRenderState::Ssr { .. } => RenderMode::Ssr,
-            }
-        };
 
         let context = Context {
             scope,
             props,
-            #[cfg(feature = "hydration")]
-            creation_mode,
-            #[cfg(feature = "hydration")]
-            prepared_state,
         };
 
         let inner = Box::new(CompStateInner {
@@ -284,8 +196,6 @@ impl ComponentState {
 
             #[cfg(feature = "csr")]
             has_rendered: false,
-            #[cfg(feature = "hydration")]
-            pending_props: None,
 
             comp_id,
         }
@@ -315,8 +225,6 @@ pub(crate) struct CreateRunner<COMP: BaseComponent> {
     pub initial_render_state: ComponentRenderState,
     pub props: Rc<COMP::Properties>,
     pub scope: Scope<COMP>,
-    #[cfg(feature = "hydration")]
-    pub prepared_state: Option<String>,
 }
 
 impl<COMP: BaseComponent> Runnable for CreateRunner<COMP> {
@@ -327,8 +235,6 @@ impl<COMP: BaseComponent> Runnable for CreateRunner<COMP> {
                 self.initial_render_state,
                 self.scope.clone(),
                 self.props,
-                #[cfg(feature = "hydration")]
-                self.prepared_state,
             ));
         }
     }
@@ -393,21 +299,6 @@ impl ComponentState {
                 ..
             } => {
                 bundle.detach(root, parent, parent_to_detach);
-            }
-            // We need to detach the hydrate fragment if the component is not hydrated.
-            #[cfg(feature = "hydration")]
-            ComponentRenderState::Hydration {
-                ref root,
-                fragment,
-                ref parent,
-                ..
-            } => {
-                fragment.detach(root, parent, parent_to_detach);
-            }
-
-            #[cfg(feature = "ssr")]
-            ComponentRenderState::Ssr { .. } => {
-                let _ = parent_to_detach;
             }
         }
     }
@@ -517,55 +408,6 @@ impl ComponentState {
                     first_render,
                 );
             }
-
-            #[cfg(feature = "hydration")]
-            ComponentRenderState::Hydration {
-                ref mut fragment,
-                ref parent,
-                ref mut own_slot,
-                ref mut sibling_slot,
-                ref root,
-            } => {
-                // We schedule a "first" render to run immediately after hydration.
-                // Most notably, only this render will trigger the "rendered" callback, hence we
-                // want to prioritize this.
-                scheduler::push_component_priority_render(
-                    self.comp_id,
-                    Box::new(RenderRunner {
-                        state: shared_state.clone(),
-                    }),
-                );
-
-                let scope = self.inner.any_scope();
-                let bundle = Bundle::hydrate(
-                    root,
-                    &scope,
-                    parent,
-                    fragment,
-                    new_vdom,
-                    &mut Some(own_slot.clone()),
-                );
-
-                // We trim all text nodes before checking as it's likely these are whitespaces.
-                fragment.trim_start_text_nodes();
-                assert!(fragment.is_empty(), "expected end of component, found node");
-
-                self.render_state = ComponentRenderState::Render {
-                    root: root.clone(),
-                    bundle,
-                    parent: parent.clone(),
-                    own_slot: own_slot.take(),
-                    sibling_slot: sibling_slot.take(),
-                };
-            }
-
-            #[cfg(feature = "ssr")]
-            ComponentRenderState::Ssr { ref mut sender } => {
-                let _ = shared_state;
-                if let Some(tx) = sender.take() {
-                    tx.send(new_vdom).unwrap();
-                }
-            }
         };
     }
 }
@@ -612,17 +454,6 @@ mod feat_csr {
                     ComponentRenderState::Render { sibling_slot, .. } => {
                         sibling_slot.reassign(next_sibling_slot);
                     }
-
-                    #[cfg(feature = "hydration")]
-                    ComponentRenderState::Hydration { sibling_slot, .. } => {
-                        sibling_slot.reassign(next_sibling_slot);
-                    }
-
-                    #[cfg(feature = "ssr")]
-                    ComponentRenderState::Ssr { .. } => {
-                        #[cfg(debug_assertions)]
-                        panic!("properties do not change during SSR");
-                    }
                 }
             }
 
@@ -630,39 +461,8 @@ mod feat_csr {
                 props.map(|m| state.inner.props_changed(m)).unwrap_or(false)
             };
 
-            #[cfg(feature = "hydration")]
-            let should_render_hydration =
-                |props: Option<Rc<dyn Any>>, state: &mut ComponentState| -> bool {
-                    if let Some(props) = props.or_else(|| state.pending_props.take()) {
-                        match state.has_rendered {
-                            true => {
-                                state.pending_props = None;
-                                state.inner.props_changed(props)
-                            }
-                            false => {
-                                state.pending_props = Some(props);
-                                false
-                            }
-                        }
-                    } else {
-                        false
-                    }
-                };
-
             // Only trigger changed if props were changed / next sibling has changed.
-            let schedule_render = {
-                #[cfg(feature = "hydration")]
-                {
-                    if self.inner.creation_mode() == RenderMode::Hydration {
-                        should_render_hydration(props, self)
-                    } else {
-                        should_render(props, self)
-                    }
-                }
-
-                #[cfg(not(feature = "hydration"))]
-                should_render(props, self)
-            };
+            let schedule_render = should_render(props, self);
 
             tracing::trace!(
                 "props_update(has_rendered={} schedule_render={})",
@@ -713,14 +513,7 @@ mod feat_csr {
                 self.inner.rendered(first_render);
             }
 
-            #[cfg(feature = "hydration")]
-            {
-                self.pending_props.is_some()
-            }
-            #[cfg(not(feature = "hydration"))]
-            {
-                false
-            }
+            false
         }
     }
 

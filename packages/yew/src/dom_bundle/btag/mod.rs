@@ -16,8 +16,6 @@ use web_sys::{Element, HtmlTextAreaElement as TextAreaElement};
 
 use super::{BNode, BSubtree, DomSlot, Reconcilable, ReconcileTarget};
 use crate::html::AnyScope;
-#[cfg(feature = "hydration")]
-use crate::virtual_dom::vtag::HTML_NAMESPACE;
 use crate::virtual_dom::vtag::{
     InputFields, TextareaFields, VTagInner, Value, MATHML_NAMESPACE, SVG_NAMESPACE,
 };
@@ -329,120 +327,6 @@ impl BTag {
             BTagInner::Input { .. } => "input",
             BTagInner::Textarea { .. } => "textarea",
             BTagInner::Other { tag, .. } => tag.as_ref(),
-        }
-    }
-}
-
-#[cfg(feature = "hydration")]
-mod feat_hydration {
-    use web_sys::Node;
-
-    use super::*;
-    use crate::dom_bundle::{node_type_str, DynamicDomSlot, Fragment, Hydratable};
-
-    impl Hydratable for VTag {
-        fn hydrate(
-            self,
-            root: &BSubtree,
-            parent_scope: &AnyScope,
-            _parent: &Element,
-            fragment: &mut Fragment,
-            prev_next_sibling: &mut Option<DynamicDomSlot>,
-        ) -> Self::Bundle {
-            let tag_name = self.tag().to_owned();
-
-            let Self {
-                inner,
-                listeners,
-                attributes,
-                node_ref,
-                key,
-            } = self;
-
-            // We trim all text nodes as it's likely these are whitespaces.
-            fragment.trim_start_text_nodes();
-
-            let node = fragment
-                .pop_front()
-                .unwrap_or_else(|| panic!("expected element of type {tag_name}, found EOF."));
-
-            assert_eq!(
-                node.node_type(),
-                Node::ELEMENT_NODE,
-                "expected element, found node type {}.",
-                node_type_str(&node),
-            );
-            let el = node.dyn_into::<Element>().expect("expected an element.");
-
-            {
-                let el_tag_name = el.tag_name();
-                let parent_namespace = _parent.namespace_uri();
-
-                // In HTML namespace (or no namespace), createElement is case-insensitive
-                // In other namespaces (SVG, MathML), createElementNS is case-sensitive
-                let should_compare_case_insensitive = parent_namespace.is_none()
-                    || parent_namespace.as_deref() == Some(HTML_NAMESPACE);
-
-                if should_compare_case_insensitive {
-                    // Case-insensitive comparison for HTML elements
-                    assert!(
-                        tag_name.eq_ignore_ascii_case(&el_tag_name),
-                        "expected element of kind {tag_name}, found {el_tag_name}.",
-                    );
-                } else {
-                    // Case-sensitive comparison for namespaced elements (SVG, MathML)
-                    assert_eq!(
-                        el_tag_name, tag_name,
-                        "expected element of kind {tag_name}, found {el_tag_name}.",
-                    );
-                }
-            }
-            // We simply register listeners and update all attributes.
-            let attributes = attributes.apply(root, &el);
-            let listeners = listeners.apply(root, &el);
-
-            // For input and textarea elements, we update their value anyways.
-            let inner = match inner {
-                VTagInner::Input(f) => {
-                    let f = f.apply(root, el.unchecked_ref());
-                    BTagInner::Input(f)
-                }
-                VTagInner::Textarea(f) => {
-                    let value = f.apply(root, el.unchecked_ref());
-
-                    BTagInner::Textarea { value }
-                }
-                VTagInner::Other { children, tag } => {
-                    let mut nodes = Fragment::collect_children(&el);
-                    let mut prev_next_child = None;
-                    let child_bundle =
-                        children.hydrate(root, parent_scope, &el, &mut nodes, &mut prev_next_child);
-                    if let Some(prev_next_child) = prev_next_child {
-                        prev_next_child.reassign(DomSlot::at_end());
-                    }
-
-                    nodes.trim_start_text_nodes();
-
-                    assert!(nodes.is_empty(), "expected EOF, found node.");
-
-                    BTagInner::Other { child_bundle, tag }
-                }
-            };
-
-            node_ref.set(Some((*el).clone()));
-            if let Some(prev_next_sibling) = prev_next_sibling {
-                prev_next_sibling.reassign(DomSlot::at((*el).clone()));
-            }
-            *prev_next_sibling = None;
-
-            BTag {
-                inner,
-                listeners,
-                attributes,
-                reference: el,
-                node_ref,
-                key,
-            }
         }
     }
 }
