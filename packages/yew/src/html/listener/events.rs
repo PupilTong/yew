@@ -1,10 +1,12 @@
 // Inspired by: http://package.elm-lang.org/packages/elm-lang/html/2.0.0/Html-Events
+//
+// In the Paws fork we don't have web_sys::MouseEvent / KeyboardEvent / etc.
+// The event payload is unit (`()`) for every listener kind; closures that
+// need to look at modifier keys, coordinates, or the target element should
+// call `rust_wasm_binding::event_*` helpers during dispatch.
 
 macro_rules! impl_action {
-    ($($action:ident($type:ident) -> $ret:path => $convert:path)*) => {$(
-        impl_action!($action($type, false) -> $ret => $convert);
-    )*};
-    ($($action:ident($type:ident, $passive:literal) -> $ret:path => $convert:path)*) => {$(
+    ($($action:ident($passive:literal))*) => {$(
         /// An abstract implementation of a listener.
         #[doc(hidden)]
         pub mod $action {
@@ -34,16 +36,17 @@ macro_rules! impl_action {
                 }
             }
 
-            /// And event type which keeps the returned type.
-            pub type Event = $ret;
+            /// The event payload. Unit in the Paws fork; event details are
+            /// queried from the host via `rust_wasm_binding::event_*`.
+            pub type Event = ();
 
             impl Listener for Wrapper {
                 fn kind(&self) -> ListenerKind {
                     ListenerKind::$action
                 }
 
-                fn handle(&self, event: web_sys::Event) {
-                    self.callback.emit($convert(event));
+                fn handle(&self, event: ()) {
+                    self.callback.emit(event);
                 }
 
                 fn passive(&self) -> bool {
@@ -54,160 +57,125 @@ macro_rules! impl_action {
     )*};
 }
 
-// Reduces repetition for common cases
-macro_rules! impl_short {
+macro_rules! impl_active {
     ($($action:ident)*) => {
-        impl_action! {
-            $(
-                $action(Event) -> web_sys::Event => std::convert::identity
-            )*
-        }
-    };
-    ($($action:ident($type:ident))*) => {
-        impl_action! {
-            $(
-                $action($type) -> web_sys::$type  => crate::html::listener::cast_event
-            )*
-        }
+        impl_action! { $( $action(false) )* }
     };
 }
 
-// Unspecialized event type
-impl_short! {
+macro_rules! impl_passive {
+    ($($action:ident)*) => {
+        impl_action! { $( $action(true) )* }
+    };
+}
+
+// All non-passive listener kinds. The Paws fork no longer distinguishes the
+// event payload type per kind; the only difference between wrappers is the
+// `ListenerKind` enum tag and whether the listener is registered passive.
+impl_active! {
     onabort
+    onauxclick
+    onblur
     oncancel
     oncanplay
     oncanplaythrough
+    onchange
+    onclick
     onclose
+    oncontextmenu
+    oncopy
+    oncut
     oncuechange
+    ondblclick
+    ondrag
+    ondragend
+    ondragenter
+    ondragexit
+    ondragleave
+    ondragover
+    ondragstart
+    ondrop
     ondurationchange
     onemptied
     onended
     onerror
-    onformdata  // web_sys doesn't have a struct for `FormDataEvent`
+    onfocus
+    onfocusin
+    onfocusout
+    onformdata
+    oninput
     oninvalid
-
+    onkeydown
+    onkeypress
+    onkeyup
     onload
     onloadeddata
     onloadedmetadata
-
+    onloadend
+    onloadstart
+    onmousedown
+    onmouseenter
+    onmouseleave
+    onmousemove
+    onmouseout
+    onmouseover
+    onmouseup
+    onpaste
     onpause
     onplay
     onplaying
-
+    onpointerlockchange
+    onpointerlockerror
+    onprogress
     onratechange
     onreset
     onresize
     onsecuritypolicyviolation
-
     onseeked
     onseeking
-
     onselect
+    onselectionchange
+    onselectstart
+    onshow
     onslotchange
     onstalled
+    onsubmit
     onsuspend
     ontimeupdate
     ontoggle
     onvolumechange
     onwaiting
+    onwheel
 
-    onchange
+    onanimationcancel
+    onanimationend
+    onanimationiteration
+    onanimationstart
 
-    oncopy
-    oncut
-    onpaste
+    ongotpointercapture
+    onlostpointercapture
+    onpointercancel
+    onpointerdown
+    onpointerenter
+    onpointerleave
+    onpointermove
+    onpointerout
+    onpointerover
+    onpointerup
 
-    onpointerlockchange
-    onpointerlockerror
-    onselectionchange
-    onselectstart
-    onshow
-}
+    ontouchcancel
+    ontouchend
 
-// Specialized event type
-impl_short! {
-    onauxclick(MouseEvent)
-    onclick(MouseEvent)
-
-    oncontextmenu(MouseEvent)
-    ondblclick(MouseEvent)
-
-    ondrag(DragEvent)
-    ondragend(DragEvent)
-    ondragenter(DragEvent)
-    ondragexit(DragEvent)
-    ondragleave(DragEvent)
-    ondragover(DragEvent)
-    ondragstart(DragEvent)
-    ondrop(DragEvent)
-
-    onblur(FocusEvent)
-    onfocus(FocusEvent)
-    onfocusin(FocusEvent)
-    onfocusout(FocusEvent)
-
-    onkeydown(KeyboardEvent)
-    onkeypress(KeyboardEvent)
-    onkeyup(KeyboardEvent)
-
-    onloadstart(ProgressEvent)
-    onprogress(ProgressEvent)
-    onloadend(ProgressEvent)
-
-    onmousedown(MouseEvent)
-    onmouseenter(MouseEvent)
-    onmouseleave(MouseEvent)
-    onmousemove(MouseEvent)
-    onmouseout(MouseEvent)
-    onmouseover(MouseEvent)
-    onmouseup(MouseEvent)
-    onwheel(WheelEvent)
-
-    oninput(InputEvent)
-
-    onsubmit(SubmitEvent)
-
-    onanimationcancel(AnimationEvent)
-    onanimationend(AnimationEvent)
-    onanimationiteration(AnimationEvent)
-    onanimationstart(AnimationEvent)
-
-    ongotpointercapture(PointerEvent)
-    onlostpointercapture(PointerEvent)
-    onpointercancel(PointerEvent)
-    onpointerdown(PointerEvent)
-    onpointerenter(PointerEvent)
-    onpointerleave(PointerEvent)
-    onpointermove(PointerEvent)
-    onpointerout(PointerEvent)
-    onpointerover(PointerEvent)
-    onpointerup(PointerEvent)
-
-    ontouchcancel(TouchEvent)
-    ontouchend(TouchEvent)
-
-    ontransitioncancel(TransitionEvent)
-    ontransitionend(TransitionEvent)
-    ontransitionrun(TransitionEvent)
-    ontransitionstart(TransitionEvent)
-}
-
-macro_rules! impl_passive {
-    ($($action:ident($type:ident))*) => {
-        impl_action! {
-            $(
-                $action($type, true) -> web_sys::$type
-                    => crate::html::listener::cast_event
-            )*
-        }
-    };
+    ontransitioncancel
+    ontransitionend
+    ontransitionrun
+    ontransitionstart
 }
 
 // Best used with passive listeners for responsiveness
 impl_passive! {
-    onscroll(Event)
+    onscroll
 
-    ontouchmove(TouchEvent)
-    ontouchstart(TouchEvent)
+    ontouchmove
+    ontouchstart
 }

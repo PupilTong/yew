@@ -5,8 +5,6 @@ use std::iter::FromIterator;
 use std::rc::Rc;
 use std::{fmt, mem};
 
-use web_sys::Node;
-
 use super::{Key, VChild, VComp, VList, VPortal, VSuspense, VTag, VText};
 use crate::html::{BaseComponent, ImplicitClone};
 
@@ -14,18 +12,18 @@ use crate::html::{BaseComponent, ImplicitClone};
 #[derive(Clone, ImplicitClone, PartialEq)]
 #[must_use = "html does not do anything unless returned to Yew for rendering."]
 pub enum VNode {
-    /// A bind between `VTag` and `Element`.
+    /// A bind between `VTag` and an element node.
     VTag(Rc<VTag>),
-    /// A bind between `VText` and `TextNode`.
+    /// A bind between `VText` and a text node.
     VText(VText),
-    /// A bind between `VComp` and `Element`.
+    /// A bind between `VComp` and an element node.
     VComp(Rc<VComp>),
     /// A holder for a list of other nodes.
     VList(Rc<VList>),
     /// A portal to another part of the document
     VPortal(Rc<VPortal>),
-    /// A holder for any `Node` (necessary for replacing node).
-    VRef(Node),
+    /// A holder for a raw Paws node id (e.g. for replacing a node).
+    VRef(i32),
     /// A suspendible document fragment.
     VSuspense(Rc<VSuspense>),
 }
@@ -61,7 +59,6 @@ impl VNode {
             }
         }
     }
-
 }
 
 impl Default for VNode {
@@ -142,7 +139,7 @@ impl fmt::Debug for VNode {
             VNode::VText(ref vtext) => vtext.fmt(f),
             VNode::VComp(ref vcomp) => vcomp.fmt(f),
             VNode::VList(ref vlist) => vlist.fmt(f),
-            VNode::VRef(ref vref) => write!(f, "VRef ( \"{}\" )", crate::utils::print_node(vref)),
+            VNode::VRef(vref) => write!(f, "VRef({vref})"),
             VNode::VPortal(ref vportal) => vportal.fmt(f),
             VNode::VSuspense(ref vsuspense) => vsuspense.fmt(f),
         }

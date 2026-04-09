@@ -2,14 +2,20 @@ use std::rc::Rc;
 
 use crate::html::ImplicitClone;
 
-/// The [Listener] trait is an universal implementation of an event listener
-/// which is used to bind Rust-listener to JS-listener (DOM).
+/// The [Listener] trait is a universal implementation of an event listener.
+///
+/// In the Paws fork the event payload is a unit type: yew only knows that
+/// "an event of kind X fired on target Y". Event-specific state (target,
+/// phase, modifier keys, etc.) is queried from the host side during dispatch
+/// via the `rust_wasm_binding::event_*` helpers, not threaded through the
+/// closure signature.
 pub trait Listener {
     /// Returns the name of the event
     fn kind(&self) -> ListenerKind;
 
-    /// Handles an event firing
-    fn handle(&self, event: web_sys::Event);
+    /// Handles an event firing. The unit payload is a deliberate placeholder
+    /// — host-side accessors return the current target, phase, etc.
+    fn handle(&self, event: ());
 
     /// Makes the event listener passive. See
     /// [addEventListener](https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener).

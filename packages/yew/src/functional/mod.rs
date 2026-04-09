@@ -25,8 +25,6 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
-use wasm_bindgen::prelude::*;
-
 use crate::html::{AnyScope, BaseComponent, Context, HtmlResult};
 use crate::Properties;
 
@@ -86,10 +84,7 @@ pub struct HookContext {
 }
 
 impl HookContext {
-    fn new(
-        scope: AnyScope,
-        re_render: ReRender,
-    ) -> RefCell<Self> {
+    fn new(scope: AnyScope, re_render: ReRender) -> RefCell<Self> {
         RefCell::new(HookContext {
             scope,
             re_render,
@@ -121,7 +116,7 @@ impl HookContext {
             }
         };
 
-        state.downcast().unwrap_throw()
+        state.downcast().expect("hook state type mismatch")
     }
 
     pub(crate) fn next_effect<T>(&mut self, initializer: impl FnOnce(ReRender) -> T) -> Rc<T>
@@ -250,10 +245,7 @@ where
 
         Self {
             _never: std::marker::PhantomData,
-            hook_ctx: HookContext::new(
-                scope,
-                re_render,
-            ),
+            hook_ctx: HookContext::new(scope, re_render),
         }
     }
 

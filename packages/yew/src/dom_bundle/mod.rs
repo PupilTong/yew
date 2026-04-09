@@ -5,8 +5,6 @@
 //! In order to efficiently implement updates, and diffing, additional information has to be
 //! kept around. This information is carried in the bundle.
 
-use web_sys::Element;
-
 use crate::html::AnyScope;
 use crate::virtual_dom::VNode;
 
@@ -52,7 +50,7 @@ impl Bundle {
     }
 
     /// Shifts the bundle into a different position.
-    pub fn shift(&self, next_parent: &Element, slot: DomSlot) {
+    pub fn shift(&self, next_parent: i32, slot: DomSlot) {
         self.0.shift(next_parent, slot);
     }
 
@@ -61,7 +59,7 @@ impl Bundle {
         &mut self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: &Element,
+        parent: i32,
         slot: DomSlot,
         next_node: VNode,
     ) -> DomSlot {
@@ -69,8 +67,7 @@ impl Bundle {
     }
 
     /// Detaches current bundle.
-    pub fn detach(self, root: &BSubtree, parent: &Element, parent_to_detach: bool) {
+    pub fn detach(self, root: &BSubtree, parent: i32, parent_to_detach: bool) {
         self.0.detach(root, parent, parent_to_detach);
     }
 }
-

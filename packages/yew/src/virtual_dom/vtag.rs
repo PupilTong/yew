@@ -6,11 +6,25 @@ use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
-use wasm_bindgen::JsValue;
-use web_sys::{HtmlInputElement as InputElement, HtmlTextAreaElement as TextAreaElement};
-
 use super::{AttrValue, AttributeOrProperty, Attributes, Key, Listener, Listeners, VNode};
 use crate::html::{ImplicitClone, IntoPropValue, NodeRef};
+
+/// Compile-time marker for an `<input>` element's `Value<T>` slot.
+///
+/// In the upstream browser fork this was `web_sys::HtmlInputElement`; the
+/// only thing the slot does is distinguish an input's value from a textarea's
+/// at the type level, so a unit struct suffices.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InputMarker;
+
+/// Compile-time marker for a `<textarea>` element's `Value<T>` slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TextareaMarker;
+
+/// Kept for parity with upstream yew so downstream code can still refer to the
+/// slot type by its old name.
+pub use InputMarker as InputElement;
+pub use TextareaMarker as TextAreaElement;
 
 /// SVG namespace string used for creating svg elements
 pub const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
@@ -393,13 +407,15 @@ impl VTag {
         );
     }
 
-    /// Set the given key as property on the element
+    /// Set the given key as property on the element.
     ///
-    /// [`js_sys::Reflect`] is used for setting properties.
-    pub fn add_property(&mut self, key: &'static str, value: impl Into<JsValue>) {
+    /// In the Paws fork this is a placeholder that routes through the
+    /// attribute path (there is no host-side property setter yet), so
+    /// `value` is stringified via [`ToString`] and stored as an `AttrValue`.
+    pub fn add_property<V: ToString>(&mut self, key: &'static str, value: V) {
         self.attributes.get_mut_index_map().insert(
             AttrValue::Static(key),
-            AttributeOrProperty::Property(value.into()),
+            AttributeOrProperty::Attribute(AttrValue::from(value.to_string())),
         );
     }
 
@@ -461,4 +477,3 @@ impl PartialEq for VTag {
             }
     }
 }
-

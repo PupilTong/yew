@@ -23,7 +23,6 @@ use std::hint::unreachable_unchecked;
 use std::rc::Rc;
 
 use indexmap::IndexMap;
-use wasm_bindgen::JsValue;
 
 #[doc(inline)]
 pub use self::key::Key;
@@ -50,6 +49,13 @@ pub use self::vtext::VText;
 pub type AttrValue = implicit_clone::unsync::IString;
 
 /// Defines if the [`Attributes`] is set as element's attribute or property and its value.
+///
+/// In the Paws fork the historical `Property(JsValue)` variant has been
+/// collapsed into [`AttributeOrProperty::Attribute`] as a placeholder: Paws
+/// does not yet expose a `set_property` host function, so every "property"
+/// value goes through `set_attribute` on the stringified form. The macro
+/// still accepts `~prop_name = …` syntax; the value is `ToString`-formatted
+/// at macro-expansion time.
 #[allow(missing_docs)]
 #[derive(PartialEq, Clone, Debug)]
 pub enum AttributeOrProperty {
@@ -61,7 +67,6 @@ pub enum AttributeOrProperty {
     // See: https://github.com/yewstack/yew/pull/3458#discussion_r1350362215
     Static(&'static str),
     Attribute(AttrValue),
-    Property(JsValue),
 }
 
 /// A collection of attributes for an element
@@ -104,10 +109,9 @@ impl Attributes {
     /// This function only returns attributes
     pub fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = (&'a str, &'a str)> + 'a> {
         match self {
-            Self::Static(arr) => Box::new(arr.iter().filter_map(|(k, v)| match v {
-                AttributeOrProperty::Attribute(v) => Some((*k, v.as_ref())),
-                AttributeOrProperty::Property(_) => None,
-                AttributeOrProperty::Static(v) => Some((*k, v)),
+            Self::Static(arr) => Box::new(arr.iter().map(|(k, v)| match v {
+                AttributeOrProperty::Attribute(v) => (*k, v.as_ref()),
+                AttributeOrProperty::Static(v) => (*k, *v),
             })),
             Self::Dynamic { keys, values } => {
                 Box::new(keys.iter().zip(values.iter()).filter_map(|(k, v)| match v {
@@ -172,16 +176,6 @@ impl From<IndexMap<&'static str, AttrValue>> for Attributes {
         let v = v
             .into_iter()
             .map(|(k, v)| (AttrValue::Static(k), (AttributeOrProperty::Attribute(v))))
-            .collect();
-        Self::IndexMap(Rc::new(v))
-    }
-}
-
-impl From<IndexMap<&'static str, JsValue>> for Attributes {
-    fn from(v: IndexMap<&'static str, JsValue>) -> Self {
-        let v = v
-            .into_iter()
-            .map(|(k, v)| (AttrValue::Static(k), (AttributeOrProperty::Property(v))))
             .collect();
         Self::IndexMap(Rc::new(v))
     }

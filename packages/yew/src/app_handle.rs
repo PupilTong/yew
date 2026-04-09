@@ -3,8 +3,6 @@
 use std::ops::Deref;
 use std::rc::Rc;
 
-use web_sys::Element;
-
 use crate::dom_bundle::{BSubtree, DomSlot};
 use crate::html::{BaseComponent, Scope, Scoped};
 
@@ -28,12 +26,12 @@ where
         name = "mount",
         skip(props),
     )]
-    pub(crate) fn mount_with_props(host: Element, props: Rc<COMP::Properties>) -> Self {
-        clear_element(&host);
+    pub(crate) fn mount_with_props(host: i32, props: Rc<COMP::Properties>) -> Self {
+        clear_element(host);
         let app = Self {
             scope: Scope::new(None),
         };
-        let hosting_root = BSubtree::create_root(&host);
+        let hosting_root = BSubtree::create_root(host);
         let _ = app
             .scope
             .mount_in_place(hosting_root, host, DomSlot::at_end(), props);
@@ -78,9 +76,8 @@ where
 }
 
 /// Removes anything from the given element.
-fn clear_element(host: &Element) {
-    while let Some(child) = host.last_child() {
-        host.remove_child(&child).expect("can't remove a child");
+fn clear_element(host: i32) {
+    while let Some(child) = rust_wasm_binding::get_last_child(host) {
+        rust_wasm_binding::remove_child(host, child).expect("can't remove a child");
     }
 }
-

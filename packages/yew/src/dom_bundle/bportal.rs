@@ -1,7 +1,5 @@
 //! This module contains the bundle implementation of a portal [BPortal].
 
-use web_sys::{Element, Node};
-
 use super::{test_log, BNode, BSubtree, DomSlot};
 use crate::dom_bundle::{Reconcilable, ReconcileTarget};
 use crate::html::AnyScope;
@@ -12,21 +10,21 @@ use crate::virtual_dom::{Key, VPortal};
 pub struct BPortal {
     // The inner root
     inner_root: BSubtree,
-    /// The element under which the content is inserted.
-    host: Element,
-    /// The next sibling after the inserted content
-    inner_sibling: Option<Node>,
+    /// Paws node id of the element under which the content is inserted.
+    host: i32,
+    /// The next sibling after the inserted content (Paws node id).
+    inner_sibling: Option<i32>,
     /// The inserted node
     node: Box<BNode>,
 }
 
 impl ReconcileTarget for BPortal {
-    fn detach(self, _root: &BSubtree, _parent: &Element, _parent_to_detach: bool) {
+    fn detach(self, _root: &BSubtree, _parent: i32, _parent_to_detach: bool) {
         test_log!("Detaching portal from host",);
-        self.node.detach(&self.inner_root, &self.host, false);
+        self.node.detach(&self.inner_root, self.host, false);
     }
 
-    fn shift(&self, _next_parent: &Element, slot: DomSlot) -> DomSlot {
+    fn shift(&self, _next_parent: i32, slot: DomSlot) -> DomSlot {
         // portals have nothing in its original place of DOM, we also do nothing.
         slot
     }
@@ -39,7 +37,7 @@ impl Reconcilable for VPortal {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: &Element,
+        parent: i32,
         host_slot: DomSlot,
     ) -> (DomSlot, Self::Bundle) {
         let Self {
@@ -47,9 +45,9 @@ impl Reconcilable for VPortal {
             inner_sibling,
             node,
         } = self;
-        let inner_slot = DomSlot::create(inner_sibling.clone());
-        let inner_root = root.create_subroot(parent.clone(), &host);
-        let (_, inner) = node.attach(&inner_root, parent_scope, &host, inner_slot);
+        let inner_slot = DomSlot::create(inner_sibling);
+        let inner_root = root.create_subroot(parent, host);
+        let (_, inner) = node.attach(&inner_root, parent_scope, host, inner_slot);
         (
             host_slot,
             BPortal {
@@ -65,7 +63,7 @@ impl Reconcilable for VPortal {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: &Element,
+        parent: i32,
         slot: DomSlot,
         bundle: &mut BNode,
     ) -> DomSlot {
@@ -79,7 +77,7 @@ impl Reconcilable for VPortal {
         self,
         _root: &BSubtree,
         parent_scope: &AnyScope,
-        _parent: &Element,
+        _parent: i32,
         host_slot: DomSlot,
         portal: &mut Self::Bundle,
     ) -> DomSlot {
@@ -93,17 +91,17 @@ impl Reconcilable for VPortal {
 
         let should_shift = old_host != portal.host || portal.inner_sibling != inner_sibling;
         portal.inner_sibling = inner_sibling;
-        let inner_slot = DomSlot::create(portal.inner_sibling.clone());
+        let inner_slot = DomSlot::create(portal.inner_sibling);
 
         if should_shift {
             // Remount the inner node somewhere else instead of diffing
             // Move the node, but keep the state
-            portal.node.shift(&portal.host, inner_slot.clone());
+            portal.node.shift(portal.host, inner_slot.clone());
         }
         node.reconcile_node(
             &portal.inner_root,
             parent_scope,
-            &portal.host,
+            portal.host,
             inner_slot,
             &mut portal.node,
         );

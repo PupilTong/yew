@@ -227,97 +227,13 @@ pub(crate) fn start_now() {
     });
 }
 
-#[cfg(all(
-    target_arch = "wasm32",
-    not(target_os = "wasi"),
-    not(feature = "not_browser_env")
-))]
 mod arch {
-    use std::sync::atomic::{AtomicBool, Ordering};
-
-    use wasm_bindgen::prelude::*;
-
-    use crate::platform::spawn_local;
-
-    // Really only used as a `Cell<bool>` that is also `Sync`
-    static IS_SCHEDULED: AtomicBool = AtomicBool::new(false);
-    fn check_scheduled() -> bool {
-        // Since we can tolerate starting too many times, and we don't need to "see" any stores
-        // done in the scheduler, Relaxed ordering is fine
-        IS_SCHEDULED.load(Ordering::Relaxed)
-    }
-    fn set_scheduled(is: bool) {
-        // See comment in check_scheduled why Relaxed ordering is fine
-        IS_SCHEDULED.store(is, Ordering::Relaxed)
-    }
-
-    #[cfg(any(test, feature = "test"))]
-    pub(super) fn is_scheduled() -> bool {
-        check_scheduled()
-    }
-
-    const YIELD_DEADLINE_MS: f64 = 16.0;
-
-    #[wasm_bindgen]
-    extern "C" {
-        #[wasm_bindgen(js_name = setTimeout)]
-        fn set_timeout(handler: &js_sys::Function, timeout: i32) -> i32;
-    }
-
-    fn run_scheduler(mut queue: Vec<super::QueueEntry>) {
-        let deadline = js_sys::Date::now() + YIELD_DEADLINE_MS;
-
-        loop {
-            super::with(|s| s.fill_queue(&mut queue));
-            if queue.is_empty() {
-                break;
-            }
-            for r in queue.drain(..) {
-                r.task.run();
-            }
-            if js_sys::Date::now() >= deadline {
-                // Only yield when no DOM-mutating work is pending, so event
-                // handlers that fire during the yield see a consistent DOM.
-                let can_yield = super::with(|s| s.can_yield());
-                if can_yield {
-                    let cb = Closure::once_into_js(move || run_scheduler(queue));
-                    set_timeout(cb.unchecked_ref(), 0);
-                    return;
-                }
-            }
-        }
-
-        set_scheduled(false);
-        #[cfg(any(test, feature = "test"))]
-        super::flush_wakers::wake_all();
-    }
-
-    /// We delay the start of the scheduler to the end of the micro task queue.
-    /// So any messages that needs to be queued can be queued.
-    /// Once running, we yield to the browser every ~16ms, but only at points
-    /// where the DOM is in a consistent state (no pending renders/destroys).
-    pub(crate) fn start() {
-        if check_scheduled() {
-            return;
-        }
-        set_scheduled(true);
-        spawn_local(async {
-            run_scheduler(vec![]);
-        });
-    }
-}
-
-#[cfg(any(
-    not(target_arch = "wasm32"),
-    target_os = "wasi",
-    feature = "not_browser_env"
-))]
-mod arch {
-    // Delayed rendering is not very useful in the context of server-side rendering.
-    // There are no event listeners or other high priority events that need to be
-    // processed and we risk of having a future un-finished.
-    // Until scheduler is future-capable which means we can join inside a future,
-    // it can remain synchronous.
+    // Paws fork: delayed rendering / browser-main-thread yielding is not
+    // useful when there is no event loop to yield to. The scheduler is
+    // driven synchronously — the host drains queues end-to-end on each
+    // call from the guest, and dispatched events run inline. This is the
+    // same shape upstream yew used for its non-browser code path
+    // (server-side rendering, WASI).
     pub(crate) fn start() {
         super::start_now();
     }
@@ -325,67 +241,15 @@ mod arch {
 
 pub(crate) use arch::*;
 
-/// Flush all pending scheduler work, ensuring all rendering and lifecycle callbacks complete.
-///
-/// On browser WebAssembly targets, the scheduler defers its work to the microtask queue.
-/// This function registers a waker that is notified when `start_now()` finishes draining all
-/// queues, providing proper event-driven render-complete notification without arbitrary sleeps.
-///
-/// On non-browser targets, the scheduler runs synchronously so this simply drains pending work.
-///
-/// Use this in tests after mounting or updating a component to ensure all rendering has
-/// completed before making assertions.
-#[cfg(all(
-    any(test, feature = "test"),
-    target_arch = "wasm32",
-    not(target_os = "wasi"),
-    not(feature = "not_browser_env")
-))]
-pub async fn flush() {
-    std::future::poll_fn(|cx| {
-        start_now();
-
-        if arch::is_scheduled() {
-            flush_wakers::register(cx.waker().clone());
-            std::task::Poll::Pending
-        } else {
-            std::task::Poll::Ready(())
-        }
-    })
-    .await
-}
-
-/// Flush all pending scheduler work, ensuring all rendering and lifecycle callbacks complete.
-///
-/// On non-browser targets, the scheduler runs synchronously so this simply drains pending work.
-#[cfg(all(
-    any(test, feature = "test"),
-    not(all(
-        target_arch = "wasm32",
-        not(target_os = "wasi"),
-        not(feature = "not_browser_env")
-    ))
-))]
+/// Flush all pending scheduler work, ensuring all rendering and lifecycle
+/// callbacks complete. On the Paws fork the scheduler is synchronous, so
+/// this just drains pending work.
+#[cfg(any(test, feature = "test"))]
 pub async fn flush() {
     start_now();
 }
 
 impl Scheduler {
-    /// Returns true when no DOM-mutating work is pending, meaning it's safe to
-    /// yield to the browser without leaving the DOM in an inconsistent state.
-    #[cfg(all(
-        target_arch = "wasm32",
-        not(target_os = "wasi"),
-        not(feature = "not_browser_env")
-    ))]
-    fn can_yield(&self) -> bool {
-        self.destroy.inner.is_empty()
-            && self.create.inner.is_empty()
-            && self.render_first.inner.is_empty()
-            && self.render.inner.is_empty()
-            && self.render_priority.inner.is_empty()
-    }
-
     /// Fill vector with tasks to be executed according to Runnable type execution priority
     ///
     /// This method is optimized for typical usage, where possible, but does not break on

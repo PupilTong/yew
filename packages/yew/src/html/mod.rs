@@ -14,8 +14,6 @@ pub use component::*;
 pub use conversion::*;
 pub use error::*;
 pub use listener::*;
-use wasm_bindgen::JsValue;
-use web_sys::{Element, Node};
 
 use crate::sealed::Sealed;
 use crate::virtual_dom::{VNode, VPortal};
@@ -50,43 +48,10 @@ impl IntoHtmlResult for Html {
 
 /// Wrapped Node reference for later use in Component lifecycle methods.
 ///
-/// # Example
-/// Focus an `<input>` element on mount.
-/// ```
-/// use web_sys::HtmlInputElement;
-/// # use yew::prelude::*;
-///
-/// pub struct Input {
-///     node_ref: NodeRef,
-/// }
-///
-/// impl Component for Input {
-///     type Message = ();
-///     type Properties = ();
-///
-///     fn create(_ctx: &Context<Self>) -> Self {
-///         Input {
-///             node_ref: NodeRef::default(),
-///         }
-///     }
-///
-///     fn rendered(&mut self, _ctx: &Context<Self>, first_render: bool) {
-///         if first_render {
-///             if let Some(input) = self.node_ref.cast::<HtmlInputElement>() {
-///                 input.focus();
-///             }
-///         }
-///     }
-///
-///     fn view(&self, _ctx: &Context<Self>) -> Html {
-///         html! {
-///             <input ref={self.node_ref.clone()} type="text" />
-///         }
-///     }
-/// }
-/// ```
-/// ## Relevant examples
-/// - [Node Refs](https://github.com/yewstack/yew/tree/master/examples/node_refs)
+/// On the Paws fork a "node" is a Paws node id (`i32`) rather than a
+/// `web_sys::Node` handle, so the upstream `cast::<HtmlInputElement>()`
+/// convenience is gone — callers query element state via the
+/// `rust_wasm_binding::event_*` / attribute helpers instead.
 #[derive(Default, Clone, ImplicitClone)]
 pub struct NodeRef(Rc<RefCell<NodeRefInner>>);
 
@@ -98,30 +63,19 @@ impl PartialEq for NodeRef {
 
 impl std::fmt::Debug for NodeRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "NodeRef {{ references: {:?} }}",
-            self.get().map(|n| crate::utils::print_node(&n))
-        )
+        write!(f, "NodeRef {{ references: {:?} }}", self.get())
     }
 }
 
 #[derive(PartialEq, Debug, Default, Clone)]
 struct NodeRefInner {
-    node: Option<Node>,
+    node: Option<i32>,
 }
 
 impl NodeRef {
-    /// Get the wrapped Node reference if it exists
-    pub fn get(&self) -> Option<Node> {
-        let inner = self.0.borrow();
-        inner.node.clone()
-    }
-
-    /// Try converting the node reference into another form
-    pub fn cast<INTO: AsRef<Node> + From<JsValue>>(&self) -> Option<INTO> {
-        let node = self.get();
-        node.map(Into::into).map(INTO::from)
+    /// Get the wrapped Paws node id if it exists.
+    pub fn get(&self) -> Option<i32> {
+        self.0.borrow().node
     }
 }
 
@@ -130,7 +84,7 @@ mod feat_csr {
     use super::*;
 
     impl NodeRef {
-        pub(crate) fn set(&self, new_ref: Option<Node>) {
+        pub(crate) fn set(&self, new_ref: Option<i32>) {
             let mut inner = self.0.borrow_mut();
             inner.node = new_ref;
         }
@@ -139,8 +93,6 @@ mod feat_csr {
 
 /// Render children into a DOM node that exists outside the hierarchy of the parent
 /// component.
-/// ## Relevant examples
-/// - [Portals](https://github.com/yewstack/yew/tree/master/examples/portals)
-pub fn create_portal(child: Html, host: Element) -> Html {
+pub fn create_portal(child: Html, host: i32) -> Html {
     VNode::VPortal(Rc::new(VPortal::new(child, host)))
 }

@@ -1,8 +1,5 @@
 //! This module contains the bundle version of a suspense [BSuspense]
 
-use gloo::utils::document;
-use web_sys::Element;
-
 use super::{BNode, BSubtree, DomSlot, Reconcilable, ReconcileTarget};
 use crate::html::AnyScope;
 use crate::virtual_dom::{Key, VSuspense};
@@ -19,7 +16,8 @@ pub(super) struct BSuspense {
     children_bundle: BNode,
     /// The suspense is suspended if fallback contains [Some] bundle
     fallback: Option<Fallback>,
-    detached_parent: Element,
+    /// Paws node id of the off-tree scratch element suspended children are shifted into.
+    detached_parent: i32,
     key: Option<Key>,
 }
 
@@ -31,14 +29,14 @@ impl BSuspense {
 }
 
 impl ReconcileTarget for BSuspense {
-    fn detach(self, root: &BSubtree, parent: &Element, parent_to_detach: bool) {
+    fn detach(self, root: &BSubtree, parent: i32, parent_to_detach: bool) {
         match self.fallback {
             Some(m) => {
                 let Fallback::Bundle(bundle) = m;
                 bundle.detach(root, parent, parent_to_detach);
 
                 self.children_bundle
-                    .detach(root, &self.detached_parent, false);
+                    .detach(root, self.detached_parent, false);
             }
             None => {
                 self.children_bundle.detach(root, parent, parent_to_detach);
@@ -46,7 +44,7 @@ impl ReconcileTarget for BSuspense {
         }
     }
 
-    fn shift(&self, next_parent: &Element, slot: DomSlot) -> DomSlot {
+    fn shift(&self, next_parent: i32, slot: DomSlot) -> DomSlot {
         match self.fallback.as_ref() {
             Some(Fallback::Bundle(bundle)) => bundle.shift(next_parent, slot),
             None => self.children_bundle.shift(next_parent, slot),
@@ -61,7 +59,7 @@ impl Reconcilable for VSuspense {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: &Element,
+        parent: i32,
         slot: DomSlot,
     ) -> (DomSlot, Self::Bundle) {
         let VSuspense {
@@ -70,15 +68,14 @@ impl Reconcilable for VSuspense {
             suspended,
             key,
         } = self;
-        let detached_parent = document()
-            .create_element("div")
-            .expect("failed to create detached element");
+        let detached_parent =
+            rust_wasm_binding::create_element("div").expect("failed to create detached element");
 
         // When it's suspended, we render children into an element that is detached from the dom
         // tree while rendering fallback UI into the original place where children resides in.
         if suspended {
             let (_child_ref, children_bundle) =
-                children.attach(root, parent_scope, &detached_parent, DomSlot::at_end());
+                children.attach(root, parent_scope, detached_parent, DomSlot::at_end());
             let (fallback_ref, fallback) = fallback.attach(root, parent_scope, parent, slot);
             (
                 fallback_ref,
@@ -107,7 +104,7 @@ impl Reconcilable for VSuspense {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: &Element,
+        parent: i32,
         slot: DomSlot,
         bundle: &mut BNode,
     ) -> DomSlot {
@@ -124,7 +121,7 @@ impl Reconcilable for VSuspense {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: &Element,
+        parent: i32,
         slot: DomSlot,
         suspense: &mut Self::Bundle,
     ) -> DomSlot {
@@ -146,7 +143,7 @@ impl Reconcilable for VSuspense {
                 children.reconcile_node(
                     root,
                     parent_scope,
-                    &suspense.detached_parent,
+                    suspense.detached_parent,
                     DomSlot::at_end(),
                     children_bundle,
                 );
@@ -161,12 +158,12 @@ impl Reconcilable for VSuspense {
             // Freshly suspended. Shift children into the detached parent, then add fallback to the
             // DOM
             (true, None) => {
-                children_bundle.shift(&suspense.detached_parent, DomSlot::at_end());
+                children_bundle.shift(suspense.detached_parent, DomSlot::at_end());
 
                 children.reconcile_node(
                     root,
                     parent_scope,
-                    &suspense.detached_parent,
+                    suspense.detached_parent,
                     DomSlot::at_end(),
                     children_bundle,
                 );
@@ -193,4 +190,3 @@ impl Reconcilable for VSuspense {
         }
     }
 }
-

@@ -4,9 +4,6 @@ use std::any::{Any, TypeId};
 use std::fmt;
 use std::rc::Rc;
 
-#[cfg(feature = "csr")]
-use web_sys::Element;
-
 use super::Key;
 #[cfg(feature = "csr")]
 use crate::dom_bundle::{BSubtree, DomSlot, DynamicDomSlot};
@@ -57,7 +54,7 @@ pub(crate) trait Mountable {
         self: Box<Self>,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: Element,
+        parent: i32,
         slot: DomSlot,
     ) -> (Box<dyn Scoped>, DynamicDomSlot);
 
@@ -99,7 +96,7 @@ impl<COMP: BaseComponent> Mountable for PropsWrapper<COMP> {
         self: Box<Self>,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: Element,
+        parent: i32,
         slot: DomSlot,
     ) -> (Box<dyn Scoped>, DynamicDomSlot) {
         let scope: Scope<COMP> = Scope::new(Some(parent_scope.clone()));

@@ -3,9 +3,6 @@
 use std::any::Any;
 use std::rc::Rc;
 
-#[cfg(feature = "csr")]
-use web_sys::Element;
-
 use super::scope::{AnyScope, Scope};
 use super::BaseComponent;
 #[cfg(feature = "csr")]
@@ -20,7 +17,7 @@ pub(crate) enum ComponentRenderState {
     Render {
         bundle: Bundle,
         root: BSubtree,
-        parent: Element,
+        parent: i32,
         /// The dom position in front of the next sibling.
         /// Gets updated when the bundle in which this component occurs gets re-rendered and is
         /// shared with the children of this component.
@@ -56,7 +53,7 @@ impl std::fmt::Debug for ComponentRenderState {
 
 #[cfg(feature = "csr")]
 impl ComponentRenderState {
-    pub(crate) fn shift(&mut self, next_parent: Element, next_slot: DomSlot) {
+    pub(crate) fn shift(&mut self, next_parent: i32, next_slot: DomSlot) {
         match self {
             #[cfg(feature = "csr")]
             Self::Render {
@@ -67,7 +64,7 @@ impl ComponentRenderState {
             } => {
                 *parent = next_parent;
                 sibling_slot.reassign(next_slot);
-                bundle.shift(parent, sibling_slot.to_position());
+                bundle.shift(*parent, sibling_slot.to_position());
             }
         }
     }
@@ -179,10 +176,7 @@ impl ComponentState {
     ) -> Self {
         let comp_id = scope.id;
 
-        let context = Context {
-            scope,
-            props,
-        };
+        let context = Context { scope, props };
 
         let inner = Box::new(CompStateInner {
             component: COMP::create(&context),
@@ -294,7 +288,7 @@ impl ComponentState {
             #[cfg(feature = "csr")]
             ComponentRenderState::Render {
                 bundle,
-                ref parent,
+                parent,
                 ref root,
                 ..
             } => {
@@ -384,7 +378,7 @@ impl ComponentState {
             #[cfg(feature = "csr")]
             ComponentRenderState::Render {
                 ref mut bundle,
-                ref parent,
+                parent,
                 ref root,
                 ref sibling_slot,
                 ref mut own_slot,

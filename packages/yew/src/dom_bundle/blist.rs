@@ -5,8 +5,6 @@ use std::collections::HashSet;
 use std::hash::Hash;
 use std::ops::Deref;
 
-use web_sys::Element;
-
 use super::{test_log, BNode, BSubtree, DomSlot};
 use crate::dom_bundle::{Reconcilable, ReconcileTarget};
 use crate::html::AnyScope;
@@ -50,7 +48,7 @@ impl Deref for BList {
 struct NodeWriter<'s> {
     root: &'s BSubtree,
     parent_scope: &'s AnyScope,
-    parent: &'s Element,
+    parent: i32,
     slot: DomSlot,
 }
 
@@ -58,11 +56,7 @@ impl NodeWriter<'_> {
     /// Write a new node that has no ancestor
     fn add(self, node: VNode) -> (Self, BNode) {
         test_log!("adding: {:?}", node);
-        test_log!(
-            "  parent={:?}, slot={:?}",
-            self.parent.outer_html(),
-            self.slot
-        );
+        test_log!("  parent={:?}, slot={:?}", self.parent, self.slot);
         let (next, bundle) = node.attach(self.root, self.parent_scope, self.parent, self.slot);
         test_log!("  next_slot: {:?}", next);
         (Self { slot: next, ..self }, bundle)
@@ -76,11 +70,7 @@ impl NodeWriter<'_> {
     /// Patch a bundle with a new node
     fn patch(self, node: VNode, bundle: &mut BNode) -> Self {
         test_log!("patching: {:?} -> {:?}", bundle, node);
-        test_log!(
-            "  parent={:?}, slot={:?}",
-            self.parent.outer_html(),
-            self.slot
-        );
+        test_log!("  parent={:?}, slot={:?}", self.parent, self.slot);
         // Advance the next sibling reference (from right to left)
         let next =
             node.reconcile_node(self.root, self.parent_scope, self.parent, self.slot, bundle);
@@ -147,7 +137,7 @@ impl BList {
     fn apply_unkeyed(
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: &Element,
+        parent: i32,
         slot: DomSlot,
         lefts: Vec<VNode>,
         rights: &mut Vec<BNode>,
@@ -188,7 +178,7 @@ impl BList {
     fn apply_keyed(
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: &Element,
+        parent: i32,
         slot: DomSlot,
         left_vdoms: Vec<VNode>,
         rev_bundles: &mut Vec<BNode>,
@@ -288,7 +278,7 @@ impl BList {
         let mut spliced_middle = rev_bundles.splice(bundle_middle, std::iter::empty());
         for (idx, r) in (&mut spliced_middle).enumerate() {
             #[cold]
-            fn duplicate_in_bundle(root: &BSubtree, parent: &Element, r: BNode) {
+            fn duplicate_in_bundle(root: &BSubtree, parent: i32, r: BNode) {
                 test_log!("removing: {:?}", r);
                 r.detach(root, parent, false);
             }
@@ -410,13 +400,13 @@ impl BList {
 }
 
 impl ReconcileTarget for BList {
-    fn detach(self, root: &BSubtree, parent: &Element, parent_to_detach: bool) {
+    fn detach(self, root: &BSubtree, parent: i32, parent_to_detach: bool) {
         for child in self.rev_children.into_iter() {
             child.detach(root, parent, parent_to_detach);
         }
     }
 
-    fn shift(&self, next_parent: &Element, mut slot: DomSlot) -> DomSlot {
+    fn shift(&self, next_parent: i32, mut slot: DomSlot) -> DomSlot {
         for node in self.rev_children.iter() {
             slot = node.shift(next_parent, slot);
         }
@@ -432,7 +422,7 @@ impl Reconcilable for VList {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: &Element,
+        parent: i32,
         slot: DomSlot,
     ) -> (DomSlot, Self::Bundle) {
         let mut self_ = BList::new();
@@ -444,7 +434,7 @@ impl Reconcilable for VList {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: &Element,
+        parent: i32,
         slot: DomSlot,
         bundle: &mut BNode,
     ) -> DomSlot {
@@ -458,7 +448,7 @@ impl Reconcilable for VList {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: &Element,
+        parent: i32,
         slot: DomSlot,
         blist: &mut BList,
     ) -> DomSlot {
