@@ -284,10 +284,6 @@ mod app_handle;
 #[cfg(feature = "csr")]
 mod renderer;
 
-#[cfg(all(feature = "csr", any(test, feature = "test")))]
-#[allow(missing_docs)]
-pub mod tests;
-
 /// The module that contains all events available in the framework.
 pub mod events {
     #[doc(no_inline)]
