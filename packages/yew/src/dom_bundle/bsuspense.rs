@@ -1,5 +1,7 @@
 //! This module contains the bundle version of a suspense [BSuspense]
 
+use rust_wasm_binding::{Element, NodeOps};
+
 use super::{BNode, BSubtree, DomSlot, Reconcilable, ReconcileTarget};
 use crate::html::AnyScope;
 use crate::virtual_dom::{Key, VSuspense};
@@ -16,8 +18,10 @@ pub(super) struct BSuspense {
     children_bundle: BNode,
     /// The suspense is suspended if fallback contains [Some] bundle
     fallback: Option<Fallback>,
-    /// Paws node id of the off-tree scratch element suspended children are shifted into.
-    detached_parent: i32,
+    /// Off-tree scratch element suspended children are shifted into. The
+    /// RAII wrapper destroys it on drop, so a suspended [BSuspense] that
+    /// never reaches `detach` still releases the host-side slab slot.
+    detached_parent: Element,
     key: Option<Key>,
 }
 
@@ -30,18 +34,31 @@ impl BSuspense {
 
 impl ReconcileTarget for BSuspense {
     fn detach(self, root: &BSubtree, parent: i32, parent_to_detach: bool) {
-        match self.fallback {
+        let Self {
+            children_bundle,
+            fallback,
+            detached_parent,
+            key: _,
+        } = self;
+        let detached_id = detached_parent.id();
+
+        match fallback {
             Some(m) => {
                 let Fallback::Bundle(bundle) = m;
                 bundle.detach(root, parent, parent_to_detach);
 
-                self.children_bundle
-                    .detach(root, self.detached_parent, false);
+                // Children live under the detached scratch parent (never
+                // attached to the main DOM tree), so they're detached with
+                // `parent_to_detach: true` — the scratch parent is about
+                // to be destroyed by its own Drop anyway.
+                children_bundle.detach(root, detached_id, true);
             }
             None => {
-                self.children_bundle.detach(root, parent, parent_to_detach);
+                children_bundle.detach(root, parent, parent_to_detach);
             }
         }
+        // `detached_parent` drops here, calling destroy_element on the
+        // scratch slab entry.
     }
 
     fn shift(&self, next_parent: i32, slot: DomSlot) -> DomSlot {
@@ -68,14 +85,14 @@ impl Reconcilable for VSuspense {
             suspended,
             key,
         } = self;
-        let detached_parent =
-            rust_wasm_binding::create_element("div").expect("failed to create detached element");
+        let detached_parent = Element::new("div").expect("failed to create detached element");
+        let detached_id = detached_parent.id();
 
         // When it's suspended, we render children into an element that is detached from the dom
         // tree while rendering fallback UI into the original place where children resides in.
         if suspended {
             let (_child_ref, children_bundle) =
-                children.attach(root, parent_scope, detached_parent, DomSlot::at_end());
+                children.attach(root, parent_scope, detached_id, DomSlot::at_end());
             let (fallback_ref, fallback) = fallback.attach(root, parent_scope, parent, slot);
             (
                 fallback_ref,
@@ -133,6 +150,7 @@ impl Reconcilable for VSuspense {
         } = self;
 
         let children_bundle = &mut suspense.children_bundle;
+        let detached_id = suspense.detached_parent.id();
         // no need to update key & detached_parent
 
         // When it's suspended, we render children into an element that is detached from the dom
@@ -143,7 +161,7 @@ impl Reconcilable for VSuspense {
                 children.reconcile_node(
                     root,
                     parent_scope,
-                    suspense.detached_parent,
+                    detached_id,
                     DomSlot::at_end(),
                     children_bundle,
                 );
@@ -158,12 +176,12 @@ impl Reconcilable for VSuspense {
             // Freshly suspended. Shift children into the detached parent, then add fallback to the
             // DOM
             (true, None) => {
-                children_bundle.shift(suspense.detached_parent, DomSlot::at_end());
+                children_bundle.shift(detached_id, DomSlot::at_end());
 
                 children.reconcile_node(
                     root,
                     parent_scope,
-                    suspense.detached_parent,
+                    detached_id,
                     DomSlot::at_end(),
                     children_bundle,
                 );

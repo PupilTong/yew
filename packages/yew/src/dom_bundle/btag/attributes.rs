@@ -19,22 +19,22 @@ impl<T> Apply for Value<T> {
     type Bundle = Self;
     type Element = i32;
 
-    fn apply(self, _root: &BSubtree, el: &Self::Element) -> Self {
+    fn apply(self, _root: &BSubtree, el: Self::Element) -> Self {
         if let Some(v) = self.deref() {
-            set_value_placeholder(*el, v);
+            set_value_placeholder(el, v);
         }
         self
     }
 
-    fn apply_diff(self, _root: &BSubtree, el: &Self::Element, bundle: &mut Self) {
+    fn apply_diff(self, _root: &BSubtree, el: Self::Element, bundle: &mut Self) {
         match (self.deref(), (*bundle).deref()) {
             (Some(new), Some(old)) => {
                 if new != old {
-                    set_value_placeholder(*el, new);
+                    set_value_placeholder(el, new);
                 }
             }
-            (Some(new), None) => set_value_placeholder(*el, new),
-            (None, Some(_)) => set_value_placeholder(*el, ""),
+            (Some(new), None) => set_value_placeholder(el, new),
+            (None, Some(_)) => set_value_placeholder(el, ""),
             (None, None) => (),
         }
     }
@@ -60,20 +60,20 @@ impl Apply for InputFields {
     type Bundle = Self;
     type Element = i32;
 
-    fn apply(mut self, root: &BSubtree, el: &Self::Element) -> Self {
+    fn apply(mut self, root: &BSubtree, el: Self::Element) -> Self {
         // IMPORTANT! This parameter has to be set every time it's explicitly given
         // to prevent strange behaviour in the browser when the DOM changes
         if let Some(checked) = self.checked {
-            set_checked_placeholder(*el, checked);
+            set_checked_placeholder(el, checked);
         }
 
         self.value = self.value.apply(root, el);
         self
     }
 
-    fn apply_diff(self, root: &BSubtree, el: &Self::Element, bundle: &mut Self) {
+    fn apply_diff(self, root: &BSubtree, el: Self::Element, bundle: &mut Self) {
         if let Some(checked) = self.checked {
-            set_checked_placeholder(*el, checked);
+            set_checked_placeholder(el, checked);
         }
 
         self.value.apply_diff(root, el, &mut bundle.value);
@@ -84,16 +84,16 @@ impl Apply for TextareaFields {
     type Bundle = Value<TextareaMarker>;
     type Element = i32;
 
-    fn apply(self, root: &BSubtree, el: &Self::Element) -> Self::Bundle {
+    fn apply(self, root: &BSubtree, el: Self::Element) -> Self::Bundle {
         if let Some(def) = self.defaultvalue {
-            if let Err(err) = rust_wasm_binding::set_attribute(*el, "defaultValue", def.as_str()) {
+            if let Err(err) = rust_wasm_binding::set_attribute(el, "defaultValue", def.as_str()) {
                 tracing::warn!(?err, el, "failed to set `defaultValue` attribute");
             }
         }
         self.value.apply(root, el)
     }
 
-    fn apply_diff(self, root: &BSubtree, el: &Self::Element, bundle: &mut Self::Bundle) {
+    fn apply_diff(self, root: &BSubtree, el: Self::Element, bundle: &mut Self::Bundle) {
         self.value.apply_diff(root, el, bundle)
     }
 }
@@ -189,30 +189,30 @@ impl Apply for Attributes {
     type Bundle = Self;
     type Element = i32;
 
-    fn apply(self, _root: &BSubtree, el: &i32) -> Self {
+    fn apply(self, _root: &BSubtree, el: i32) -> Self {
         match &self {
             Self::Static(arr) => {
                 for (k, v) in arr.iter() {
-                    Self::set(*el, k, v);
+                    Self::set(el, k, v);
                 }
             }
             Self::Dynamic { keys, values } => {
                 for (k, v) in keys.iter().zip(values.iter()) {
                     if let Some(v) = v {
-                        Self::set(*el, k, v)
+                        Self::set(el, k, v)
                     }
                 }
             }
             Self::IndexMap(m) => {
                 for (k, v) in m.iter() {
-                    Self::set(*el, k, v)
+                    Self::set(el, k, v)
                 }
             }
         }
         self
     }
 
-    fn apply_diff(self, _root: &BSubtree, el: &i32, bundle: &mut Self) {
+    fn apply_diff(self, _root: &BSubtree, el: i32, bundle: &mut Self) {
         #[inline]
         fn ptr_eq<T>(a: &[T], b: &[T]) -> bool {
             std::ptr::eq(a, b)
@@ -245,7 +245,7 @@ impl Apply for Attributes {
                     }
                     macro_rules! set {
                         ($new:expr) => {
-                            Self::set(*el, key!(), $new)
+                            Self::set(el, key!(), $new)
                         };
                     }
 
@@ -257,7 +257,7 @@ impl Apply for Attributes {
                         }
                         (Some(new), None) => set!(new),
                         (None, Some(old)) => {
-                            Self::remove(*el, key!(), old);
+                            Self::remove(el, key!(), old);
                         }
                         (None, None) => (),
                     }
@@ -265,12 +265,12 @@ impl Apply for Attributes {
             }
             // For VTag's constructed outside the html! macro
             (Self::IndexMap(new), Self::IndexMap(ref old)) => {
-                Self::apply_diff_index_maps(*el, new, old);
+                Self::apply_diff_index_maps(el, new, old);
             }
             // Cold path. Happens only with conditional swapping and reordering of `VTag`s with the
             // same tag and no keys.
             (new, ref ancestor) => {
-                Self::apply_diff_as_maps(*el, new, ancestor);
+                Self::apply_diff_as_maps(el, new, ancestor);
             }
         }
     }

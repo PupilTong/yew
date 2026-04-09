@@ -1,5 +1,7 @@
 //! This module contains the bundle implementation of text [BText].
 
+use rust_wasm_binding::{NodeOps, Text};
+
 use super::{BNode, BSubtree, DomSlot, Reconcilable, ReconcileTarget};
 use crate::html::AnyScope;
 use crate::virtual_dom::{AttrValue, VText};
@@ -7,25 +9,34 @@ use crate::virtual_dom::{AttrValue, VText};
 /// The bundle implementation to [VText]
 pub(super) struct BText {
     text: AttrValue,
-    /// Paws node id for the host-side text node.
-    text_node: i32,
+    /// RAII wrapper for the host-side text node. Dropping destroys it.
+    text_node: Text,
 }
 
 impl ReconcileTarget for BText {
     fn detach(self, _root: &BSubtree, parent: i32, parent_to_detach: bool) {
-        if !parent_to_detach {
-            let result = rust_wasm_binding::remove_child(parent, self.text_node);
+        let Self { text: _, text_node } = self;
+        let node_id = text_node.id();
 
-            if result.is_err() {
-                tracing::warn!("Node not found to remove VText");
+        if parent_to_detach {
+            // Parent is going away; host will cascade the destroy. Forget
+            // the wrapper to avoid double-destroying the already-removed
+            // slab entry.
+            let _ = text_node.into_raw();
+        } else {
+            // Physically detach from parent. Drop (below) will destroy
+            // the slab entry.
+            if let Err(err) = rust_wasm_binding::remove_child(parent, node_id) {
+                tracing::warn!(?err, "Node not found to remove VText");
             }
+            // text_node dropped here → destroy_element
         }
     }
 
     fn shift(&self, next_parent: i32, slot: DomSlot) -> DomSlot {
-        slot.insert(next_parent, self.text_node);
-
-        DomSlot::at(self.text_node)
+        let node_id = self.text_node.id();
+        slot.insert(next_parent, node_id);
+        DomSlot::at(node_id)
     }
 }
 
@@ -40,10 +51,10 @@ impl Reconcilable for VText {
         slot: DomSlot,
     ) -> (DomSlot, Self::Bundle) {
         let Self { text } = self;
-        let text_node =
-            rust_wasm_binding::create_text_node(&text).expect("failed to create text node");
-        slot.insert(parent, text_node);
-        let node_ref = DomSlot::at(text_node);
+        let text_node = Text::new(&text).expect("failed to create text node");
+        let node_id = text_node.id();
+        slot.insert(parent, node_id);
+        let node_ref = DomSlot::at(node_id);
         (node_ref, BText { text, text_node })
     }
 
@@ -73,10 +84,12 @@ impl Reconcilable for VText {
         let Self { text } = self;
         let ancestor_text = std::mem::replace(&mut btext.text, text);
         if btext.text != ancestor_text {
-            rust_wasm_binding::set_node_value(btext.text_node, &btext.text)
+            btext
+                .text_node
+                .set_node_value(&btext.text)
                 .expect("failed to set text node value");
         }
-        DomSlot::at(btext.text_node)
+        DomSlot::at(btext.text_node.id())
     }
 }
 
