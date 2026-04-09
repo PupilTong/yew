@@ -1,0 +1,40 @@
+#![cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
+
+mod common;
+
+use common::obtain_result;
+use wasm_bindgen_test::*;
+use yew::prelude::*;
+use yew::scheduler;
+
+wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
+
+#[wasm_bindgen_test]
+async fn props_are_passed() {
+    #[derive(Properties, Clone, PartialEq)]
+    struct PropsPassedFunctionProps {
+        value: String,
+    }
+
+    #[component]
+    fn PropsComponent(props: &PropsPassedFunctionProps) -> Html {
+        assert_eq!(&props.value, "props");
+        html! {
+            <div id="result">
+                {"done"}
+            </div>
+        }
+    }
+
+    yew::Renderer::<PropsComponent>::with_root_and_props(
+        gloo::utils::document().get_element_by_id("output").unwrap(),
+        PropsPassedFunctionProps {
+            value: "props".to_string(),
+        },
+    )
+    .render();
+
+    scheduler::flush().await;
+    let result = obtain_result();
+    assert_eq!(result.as_str(), "done");
+}
