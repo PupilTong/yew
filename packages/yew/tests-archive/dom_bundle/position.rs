@@ -132,6 +132,11 @@ impl DomSlot {
         });
     }
 
+    #[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
+    #[cfg(test)]
+    fn get(&self) -> Option<Node> {
+        self.with_next_sibling(|n| n.cloned())
+    }
 }
 
 impl DynamicDomSlot {
@@ -176,5 +181,90 @@ impl DynamicDomSlot {
             };
             this = next_this;
         }
+    }
+}
+
+#[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
+#[cfg(test)]
+mod layout_tests {
+    use gloo::utils::document;
+    use wasm_bindgen_test::{wasm_bindgen_test as test, wasm_bindgen_test_configure};
+
+    use super::*;
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    #[test]
+    fn new_at_and_get() {
+        let node = document().create_element("p").unwrap();
+        let position = DomSlot::at(node.clone().into());
+        assert_eq!(
+            position.get().unwrap(),
+            node.clone().into(),
+            "expected the DomSlot to be at {node:#?}"
+        );
+    }
+
+    #[test]
+    fn new_at_end_and_get() {
+        let position = DomSlot::at_end();
+        assert!(
+            position.get().is_none(),
+            "expected the DomSlot to not have a next sibling"
+        );
+    }
+
+    #[test]
+    fn get_through_dynamic() {
+        let original = DomSlot::at(document().create_element("p").unwrap().into());
+        let target = DynamicDomSlot::new(original.clone());
+        assert_eq!(
+            target.to_position().get(),
+            original.get(),
+            "expected {target:#?} to point to the same position as {original:#?}"
+        );
+    }
+
+    #[test]
+    fn get_after_reassign() {
+        let target = DynamicDomSlot::new(DomSlot::at_end());
+        let target_pos = target.to_position();
+        // We reassign *after* we called `to_position` here to be strict in the test
+        let replacement = DomSlot::at(document().create_element("p").unwrap().into());
+        target.reassign(replacement.clone());
+        assert_eq!(
+            target_pos.get(),
+            replacement.get(),
+            "expected {target:#?} to point to the same position as {replacement:#?}"
+        );
+    }
+
+    #[test]
+    fn get_chain_after_reassign() {
+        let middleman = DynamicDomSlot::new(DomSlot::at_end());
+        let target = DynamicDomSlot::new(middleman.to_position());
+        let target_pos = target.to_position();
+        assert!(
+            target.to_position().get().is_none(),
+            "should not yet point to a node"
+        );
+        // Now reassign the middle man, but get the node from `target`
+        let replacement = DomSlot::at(document().create_element("p").unwrap().into());
+        middleman.reassign(replacement.clone());
+        assert_eq!(
+            target_pos.get(),
+            replacement.get(),
+            "expected {target:#?} to point to the same position as {replacement:#?}"
+        );
+    }
+
+    #[test]
+    fn debug_printing() {
+        // basic tests that these don't panic. We don't enforce any specific format.
+        println!("At end: {:?}", DomSlot::at_end());
+        println!(
+            "At element: {:?}",
+            DomSlot::at(document().create_element("p").unwrap().into())
+        );
     }
 }

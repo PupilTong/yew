@@ -85,3 +85,79 @@ impl std::fmt::Debug for BText {
         f.debug_struct("BText").field("text", &self.text).finish()
     }
 }
+
+#[cfg(test)]
+mod test {
+    extern crate self as yew;
+
+    #[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
+    use wasm_bindgen_test::{wasm_bindgen_test as test, wasm_bindgen_test_configure};
+
+    use crate::html;
+
+    #[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    #[test]
+    fn text_as_root() {
+        let _ = html! {
+            "Text Node As Root"
+        };
+
+        let _ = html! {
+            { "Text Node As Root" }
+        };
+    }
+}
+
+#[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
+#[cfg(test)]
+mod layout_tests {
+    extern crate self as yew;
+
+    use wasm_bindgen_test::{wasm_bindgen_test as test, wasm_bindgen_test_configure};
+
+    use crate::html;
+    use crate::tests::layout_tests::{diff_layouts, TestLayout};
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    #[test]
+    fn diff() {
+        let layout1 = TestLayout {
+            name: "1",
+            node: html! { "a" },
+            expected: "a",
+        };
+
+        let layout2 = TestLayout {
+            name: "2",
+            node: html! { "b" },
+            expected: "b",
+        };
+
+        let layout3 = TestLayout {
+            name: "3",
+            node: html! {
+                <>
+                    {"a"}
+                    {"b"}
+                </>
+            },
+            expected: "ab",
+        };
+
+        let layout4 = TestLayout {
+            name: "4",
+            node: html! {
+                <>
+                    {"b"}
+                    {"a"}
+                </>
+            },
+            expected: "ba",
+        };
+
+        diff_layouts(vec![layout1, layout2, layout3, layout4]);
+    }
+}

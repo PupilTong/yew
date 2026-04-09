@@ -245,3 +245,35 @@ impl fmt::Debug for BNode {
         }
     }
 }
+
+#[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
+#[cfg(test)]
+mod layout_tests {
+    use wasm_bindgen_test::{wasm_bindgen_test as test, wasm_bindgen_test_configure};
+
+    use super::*;
+    use crate::tests::layout_tests::{diff_layouts, TestLayout};
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    #[test]
+    fn diff() {
+        let document = gloo::utils::document();
+        let vref_node_1 = VNode::VRef(document.create_element("i").unwrap().into());
+        let vref_node_2 = VNode::VRef(document.create_element("b").unwrap().into());
+
+        let layout1 = TestLayout {
+            name: "1",
+            node: vref_node_1,
+            expected: "<i></i>",
+        };
+
+        let layout2 = TestLayout {
+            name: "2",
+            node: vref_node_2,
+            expected: "<b></b>",
+        };
+
+        diff_layouts(vec![layout1, layout2]);
+    }
+}
