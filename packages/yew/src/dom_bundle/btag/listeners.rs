@@ -59,7 +59,7 @@ impl Apply for Listeners {
 
     fn apply(self, root: &BSubtree, el: &Element) -> ListenerRegistration {
         match self {
-            Self::Pending(pending) => ListenerRegistration::register(root, el.id(), &pending),
+            Self::Pending(pending) => ListenerRegistration::register(root, el, &pending),
             Self::None => ListenerRegistration::NoReg,
         }
     }
@@ -75,7 +75,7 @@ impl Apply for Listeners {
                 root.with_listener_registry(|reg| reg.patch(root, id, &pending));
             }
             (Pending(pending), bundle @ NoReg) => {
-                *bundle = ListenerRegistration::register(root, el.id(), &pending);
+                *bundle = ListenerRegistration::register(root, el, &pending);
                 test_log!(
                     "registering listeners for {}",
                     match bundle {
@@ -102,14 +102,15 @@ impl Apply for Listeners {
 }
 
 impl ListenerRegistration {
-    /// Register listeners and return their handle ID
-    fn register(root: &BSubtree, el: i32, pending: &[Option<Rc<dyn Listener>>]) -> Self {
+    /// Register listeners and return their handle ID.
+    fn register(root: &BSubtree, el: &Element, pending: &[Option<Rc<dyn Listener>>]) -> Self {
+        let el_id = el.id();
         let id = root.with_listener_registry(|reg| {
             let id = reg.set_listener_id(root, el);
             reg.register(root, id, pending);
             id
         });
-        Self::Registered { id, el }
+        Self::Registered { id, el: el_id }
     }
 
     /// Remove any registered event listeners from the global registry
@@ -194,12 +195,13 @@ impl Registry {
     }
 
     /// Set unique listener ID for the given element and return it.
-    fn set_listener_id(&mut self, root: &BSubtree, el: i32) -> u32 {
+    fn set_listener_id(&mut self, root: &BSubtree, el: &Element) -> u32 {
         let id = self.id_counter;
         self.id_counter += 1;
 
-        root.brand_element(el);
-        store_listener_id(el, id);
+        let el_id = el.id();
+        root.brand_element(el_id);
+        store_listener_id(el_id, id);
 
         id
     }

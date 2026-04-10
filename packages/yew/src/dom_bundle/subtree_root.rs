@@ -97,7 +97,9 @@ struct ParentingInformation {
     parent_root: Rc<SubtreeData>,
     /// Logical parent of the subtree. Might be the host element of another
     /// subtree, if mounted as a direct child, or a controlled element.
-    mount_element: i32,
+    /// Held as `Rc<Element>` to keep the mount point alive in the host slab
+    /// while the subtree exists.
+    mount_element: Rc<Element>,
 }
 
 #[derive(Clone, Hash, Eq, PartialEq, Debug)]
@@ -124,16 +126,16 @@ impl From<&dyn Listener> for EventDescriptor {
 /// [`rust_wasm_binding::add_event_listener`]. That wiring is not part of
 /// Phase 2 yet — once it lands, the per-subtree book-keeping here will be
 /// repurposed to drive it.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct HostHandlers {
-    /// Host element node id where events are registered
-    host: i32,
+    /// Shared handle to the host element where events are registered.
+    host: Rc<Element>,
     /// Event types already forwarded to the host for this subtree.
     registered: HashSet<ListenerKind>,
 }
 
 impl HostHandlers {
-    fn new(host: i32) -> Self {
+    fn new(host: Rc<Element>) -> Self {
         Self {
             host,
             registered: HashSet::new(),
@@ -143,10 +145,11 @@ impl HostHandlers {
     fn add_listener(&mut self, desc: &EventDescriptor) {
         if self.registered.insert(desc.kind.clone()) {
             // TODO(Paws Phase 2 follow-up): register a per-kind dispatcher
-            // via `rust_wasm_binding::register_listener` + `add_event_listener`.
+            // via `rust_wasm_binding::register_listener` + `add_event_listener`
+            // using `self.host`.
             // Today the listener is tracked guest-side only; actual dispatch
             // is wired in a later commit.
-            let _ = self.host;
+            let _ = &self.host;
         }
     }
 }
@@ -160,8 +163,9 @@ struct SubtreeData {
     parent: Option<ParentingInformation>,
 
     subtree_id: TreeId,
-    /// Paws node id of the host element.
-    host: i32,
+    /// Shared handle to the host element. Kept as `Rc<Element>` so the
+    /// slab entry stays alive for the lifetime of the subtree.
+    host: Rc<Element>,
     event_registry: RefCell<Registry>,
     global: RefCell<HostHandlers>,
 }
@@ -287,10 +291,10 @@ fn start_bubbling_from(
 }
 
 impl SubtreeData {
-    fn new_ref(host_element: i32, parent: Option<ParentingInformation>) -> Rc<Self> {
+    fn new_ref(host: Rc<Element>, parent: Option<ParentingInformation>) -> Rc<Self> {
         let tree_root_id = next_root_id();
         let event_registry = Registry::new();
-        let host_handlers = HostHandlers::new(host_element);
+        let host_handlers = HostHandlers::new(Rc::clone(&host));
         let app_data = match parent {
             Some(ref parent) => parent.parent_root.app_data.clone(),
             None => Rc::default(),
@@ -300,7 +304,7 @@ impl SubtreeData {
             app_data,
 
             subtree_id: tree_root_id,
-            host: host_element,
+            host,
             event_registry: RefCell::new(event_registry),
             global: RefCell::new(host_handlers),
         });
@@ -320,14 +324,14 @@ impl SubtreeData {
     fn bubble_to_inner_element(&self, parent_el: i32, should_bubble: bool) -> Option<(&Self, i32)> {
         let mut next_subtree = self;
         let mut next_el = parent_el;
-        if !should_bubble && next_subtree.host == next_el {
+        if !should_bubble && next_subtree.host.id() == next_el {
             return None;
         }
-        while next_subtree.host == next_el {
+        while next_subtree.host.id() == next_el {
             // we've reached the host, delegate to a parent if one exists
             let parent = next_subtree.parent.as_ref()?;
             next_subtree = &parent.parent_root;
-            next_el = parent.mount_element;
+            next_el = parent.mount_element.id();
         }
         Some((next_subtree, next_el))
     }
@@ -359,7 +363,7 @@ impl SubtreeData {
         if self.subtree_id != responsible_tree_id {
             return None;
         }
-        if self.host == target {
+        if self.host.id() == target {
             // One more special case: don't handle events that get fired
             // directly on a subtree host.
             return None;
@@ -400,26 +404,27 @@ impl SubtreeData {
 }
 
 impl BSubtree {
-    fn do_create_root(host_element: i32, parent: Option<ParentingInformation>) -> Self {
-        let shared_inner = SubtreeData::new_ref(host_element, parent);
+    fn do_create_root(host: Rc<Element>, parent: Option<ParentingInformation>) -> Self {
+        let host_id = host.id();
+        let shared_inner = SubtreeData::new_ref(host, parent);
         let root = BSubtree(shared_inner);
-        root.brand_element(host_element);
+        root.brand_element(host_id);
         root
     }
 
-    /// Create a bundle root at the specified host element
-    pub fn create_root(host_element: &Element) -> Self {
-        Self::do_create_root(host_element.id(), None)
+    /// Create a bundle root at the specified host element.
+    pub fn create_root(host_element: &Rc<Element>) -> Self {
+        Self::do_create_root(Rc::clone(host_element), None)
     }
 
     /// Create a bundle root at the specified host element, that is logically
     /// mounted under the specified element in this tree.
-    pub fn create_subroot(&self, mount_point: &Element, host_element: &Element) -> Self {
+    pub fn create_subroot(&self, mount_point: &Rc<Element>, host_element: &Rc<Element>) -> Self {
         let parent_information = ParentingInformation {
             parent_root: self.0.clone(),
-            mount_element: mount_point.id(),
+            mount_element: Rc::clone(mount_point),
         };
-        Self::do_create_root(host_element.id(), Some(parent_information))
+        Self::do_create_root(Rc::clone(host_element), Some(parent_information))
     }
 
     /// Ensure the event described is handled on all subtrees

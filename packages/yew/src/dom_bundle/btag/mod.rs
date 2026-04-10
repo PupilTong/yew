@@ -105,7 +105,7 @@ impl ReconcileTarget for BTag {
 
         // It could be that the ref was already reused when rendering another element.
         // Only unset the ref if it still belongs to our node.
-        if node_ref.get() == Some(node_id) {
+        if node_ref.get().map(|e| e.id()) == Some(node_id) {
             node_ref.set(None);
         }
     }
@@ -162,7 +162,7 @@ impl Reconcilable for VTag {
                 BTagInner::Other { child_bundle, tag }
             }
         };
-        node_ref.set(Some(el_id));
+        node_ref.set(Some(Rc::clone(&reference)));
         (
             DomSlot::at(el_id),
             BTag {
@@ -248,12 +248,12 @@ impl Reconcilable for VTag {
 
         tag.key = self.key;
 
-        if self.node_ref != tag.node_ref && tag.node_ref.get() == Some(el_id) {
+        if self.node_ref != tag.node_ref && tag.node_ref.get().map(|e| e.id()) == Some(el_id) {
             tag.node_ref.set(None);
         }
         if self.node_ref != tag.node_ref {
             tag.node_ref = self.node_ref;
-            tag.node_ref.set(Some(el_id));
+            tag.node_ref.set(Some(Rc::clone(&tag.reference)));
         }
 
         DomSlot::at(el_id)

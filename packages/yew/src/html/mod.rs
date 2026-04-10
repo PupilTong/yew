@@ -14,7 +14,6 @@ pub use component::*;
 pub use conversion::*;
 pub use error::*;
 pub use listener::*;
-#[cfg(feature = "csr")]
 use rust_wasm_binding::Element;
 
 use crate::sealed::Sealed;
@@ -50,10 +49,10 @@ impl IntoHtmlResult for Html {
 
 /// Wrapped Node reference for later use in Component lifecycle methods.
 ///
-/// On the Paws fork a "node" is a Paws node id (`i32`) rather than a
-/// `web_sys::Node` handle, so the upstream `cast::<HtmlInputElement>()`
-/// convenience is gone — callers query element state via the
-/// `rust_wasm_binding::event_*` / attribute helpers instead.
+/// Stores an `Rc<Element>` handle to the underlying DOM node, giving user
+/// code type-safe access to the element and keeping it alive via shared
+/// ownership. Query element state through the [`rust_wasm_binding::ElementOps`]
+/// / [`rust_wasm_binding::NodeOps`] traits on the returned handle.
 #[derive(Default, Clone, ImplicitClone)]
 pub struct NodeRef(Rc<RefCell<NodeRefInner>>);
 
@@ -65,19 +64,24 @@ impl PartialEq for NodeRef {
 
 impl std::fmt::Debug for NodeRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "NodeRef {{ references: {:?} }}", self.get())
+        use rust_wasm_binding::NodeOps;
+        write!(
+            f,
+            "NodeRef {{ references: {:?} }}",
+            self.get().map(|e| e.id())
+        )
     }
 }
 
-#[derive(PartialEq, Debug, Default, Clone)]
+#[derive(Debug, Default, Clone)]
 struct NodeRefInner {
-    node: Option<i32>,
+    node: Option<Rc<Element>>,
 }
 
 impl NodeRef {
-    /// Get the wrapped Paws node id if it exists.
-    pub fn get(&self) -> Option<i32> {
-        self.0.borrow().node
+    /// Get a shared handle to the wrapped element, if one has been attached.
+    pub fn get(&self) -> Option<Rc<Element>> {
+        self.0.borrow().node.clone()
     }
 }
 
@@ -86,9 +90,8 @@ mod feat_csr {
     use super::*;
 
     impl NodeRef {
-        pub(crate) fn set(&self, new_ref: Option<i32>) {
-            let mut inner = self.0.borrow_mut();
-            inner.node = new_ref;
+        pub(crate) fn set(&self, new_ref: Option<Rc<Element>>) {
+            self.0.borrow_mut().node = new_ref;
         }
     }
 }
