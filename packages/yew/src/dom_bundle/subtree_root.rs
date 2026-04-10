@@ -129,21 +129,59 @@ impl From<&dyn Listener> for EventDescriptor {
     }
 }
 
-/// Ensures event handler registration.
+// ---------------------------------------------------------------------------
+// Host ↔ guest event dispatch wiring
+// ---------------------------------------------------------------------------
+
+thread_local! {
+    /// Maps each host-registered `callback_id` to the subtree and event
+    /// descriptor it was registered for. Populated by
+    /// [`HostHandlers::add_listener`], read by [`yew_event_dispatch`],
+    /// and cleaned up when [`HostHandlers`] is dropped.
+    static CALLBACK_DISPATCH: RefCell<HashMap<u32, DispatchEntry>> = RefCell::new(HashMap::new());
+}
+
+struct DispatchEntry {
+    subtree: Weak<SubtreeData>,
+    descriptor: EventDescriptor,
+}
+
+/// Static dispatch function registered with the host for *every* event
+/// listener. When the host fires an event, it calls
+/// [`rust_wasm_binding::paws_invoke_listener(callback_id)`][crate]
+/// which looks up this function and passes the `callback_id` through.
+/// We then map that id to the owning subtree + event descriptor and
+/// route the event through yew's internal [`SubtreeData::handle`].
+fn yew_event_dispatch(callback_id: i32) {
+    CALLBACK_DISPATCH.with(|map| {
+        let map = map.borrow();
+        let Some(entry) = map.get(&(callback_id as u32)) else {
+            return;
+        };
+        let Some(subtree) = entry.subtree.upgrade() else {
+            return;
+        };
+        let Some(target) = rust_wasm_binding::event_target() else {
+            return;
+        };
+        subtree.handle(entry.descriptor.clone(), target);
+    });
+}
+
+/// Manages host-side event listener registrations for a single subtree.
 ///
-/// **Stub.** The browser version installed `Closure::wrap`ped handlers on
-/// the subtree root via `addEventListener`; on Paws the plan is to
-/// generate a non-capturing `fn()` dispatcher per [`ListenerKind`] and
-/// hand that to [`rust_wasm_binding::register_listener`] +
-/// [`rust_wasm_binding::add_event_listener`]. That wiring is not part of
-/// Phase 2 yet — once it lands, the per-subtree book-keeping here will be
-/// repurposed to drive it.
+/// Each subtree registers at most one host-side listener per event kind
+/// (delegation model). The dispatching function [`yew_event_dispatch`]
+/// uses [`CALLBACK_DISPATCH`] to route the callback to the correct
+/// subtree and event descriptor.
 #[derive(Debug)]
 struct HostHandlers {
     /// Shared handle to the host element where events are registered.
     host: Rc<Element>,
     /// Event types already forwarded to the host for this subtree.
     registered: HashSet<ListenerKind>,
+    /// `(callback_id, event_type_name)` pairs for cleanup.
+    callback_ids: Vec<(u32, String)>,
 }
 
 impl HostHandlers {
@@ -151,18 +189,72 @@ impl HostHandlers {
         Self {
             host,
             registered: HashSet::new(),
+            callback_ids: Vec::new(),
         }
     }
 
-    fn add_listener(&mut self, desc: &EventDescriptor) {
+    /// Register a host-side event listener for the given event kind if
+    /// one has not already been registered on this subtree's root.
+    fn add_listener(&mut self, subtree: &Rc<SubtreeData>, desc: &EventDescriptor) {
         if self.registered.insert(desc.kind.clone()) {
-            // TODO(Paws Phase 2 follow-up): register a per-kind dispatcher
-            // via `rust_wasm_binding::register_listener` + `add_event_listener`
-            // using `self.host`.
-            // Today the listener is tracked guest-side only; actual dispatch
-            // is wired in a later commit.
-            let _ = &self.host;
+            let callback_id = rust_wasm_binding::register_listener(yew_event_dispatch);
+            let event_type = desc.kind.type_name();
+
+            let mut options = rust_wasm_binding::EventListenerOptions::new();
+            if desc.passive {
+                options = options.passive();
+            }
+
+            if let Err(err) = rust_wasm_binding::add_event_listener(
+                self.host.id(),
+                &event_type,
+                callback_id as i32,
+                options,
+            ) {
+                tracing::warn!(
+                    err,
+                    %event_type,
+                    "failed to register host event listener"
+                );
+                return;
+            }
+
+            // Store the mapping so yew_event_dispatch can route callbacks.
+            CALLBACK_DISPATCH.with(|map| {
+                map.borrow_mut().insert(
+                    callback_id,
+                    DispatchEntry {
+                        subtree: Rc::downgrade(subtree),
+                        descriptor: desc.clone(),
+                    },
+                );
+            });
+
+            self.callback_ids
+                .push((callback_id, event_type.into_owned()));
         }
+    }
+
+    /// Remove all host-side listeners and clean up the dispatch table.
+    fn cleanup(&mut self) {
+        for (callback_id, event_type) in self.callback_ids.drain(..) {
+            let _ = rust_wasm_binding::remove_event_listener(
+                self.host.id(),
+                &event_type,
+                callback_id as i32,
+                false,
+            );
+            rust_wasm_binding::unregister_listener(callback_id);
+            CALLBACK_DISPATCH.with(|m| {
+                m.borrow_mut().remove(&callback_id);
+            });
+        }
+    }
+}
+
+impl Drop for HostHandlers {
+    fn drop(&mut self) {
+        self.cleanup();
     }
 }
 
@@ -385,10 +477,12 @@ impl SubtreeData {
 
     /// Handle a global event firing.
     ///
-    /// Stub for Phase 2 — wires up once the host-side dispatcher-table
-    /// integration lands. Today this is dead code but kept structurally so
-    /// the follow-up diff touches the fewest files possible.
-    #[allow(dead_code)]
+    /// Route a host-dispatched event to yew's listener registry.
+    ///
+    /// Called from [`yew_event_dispatch`] when the host invokes a
+    /// callback registered on this subtree's root element. Walks the
+    /// virtual DOM tree from `target` upward (software bubbling),
+    /// invoking every registered handler that matches `desc`.
     fn handle(&self, desc: EventDescriptor, target: i32) {
         let run_handler = |root: &Self, el: i32| {
             let handler = Registry::get_handler(root.event_registry(), &el, &desc);
@@ -411,7 +505,7 @@ impl SubtreeData {
     }
 
     fn add_listener(self: &Rc<Self>, desc: &EventDescriptor) {
-        self.host_handlers().borrow_mut().add_listener(desc);
+        self.host_handlers().borrow_mut().add_listener(self, desc);
     }
 }
 
