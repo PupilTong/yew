@@ -1,3 +1,7 @@
+use std::rc::Rc;
+
+use rust_wasm_binding::Element;
+
 use super::{BNode, BSubtree, DomSlot};
 use crate::html::AnyScope;
 
@@ -9,12 +13,12 @@ pub(super) trait ReconcileTarget {
     /// Remove self from parent.
     ///
     /// Parent to detach is `true` if the parent element will also be detached.
-    fn detach(self, root: &BSubtree, parent: i32, parent_to_detach: bool);
+    fn detach(self, root: &BSubtree, parent: &Rc<Element>, parent_to_detach: bool);
 
     /// Move elements from one parent to another parent.
     /// This is for example used by `VSuspense` to preserve component state without detaching
     /// (which destroys component state).
-    fn shift(&self, next_parent: i32, slot: DomSlot) -> DomSlot;
+    fn shift(&self, next_parent: &Rc<Element>, slot: DomSlot) -> DomSlot;
 }
 
 /// This trait provides features to update a tree by calculating a difference against another tree.
@@ -26,7 +30,10 @@ pub(super) trait Reconcilable {
     /// Parameters:
     /// - `root`: bundle of the subtree root
     /// - `parent_scope`: the parent `Scope` used for passing messages to the parent `Component`.
-    /// - `parent`: the parent node id (Paws slab id) in the DOM.
+    /// - `parent`: shared handle to the parent element in the DOM. Trait methods take
+    ///   `&Rc<Element>` (not `&Element`) so an implementation that needs to keep a long-lived
+    ///   reference to the parent — most notably `Scope::mount_in_place` storing the parent inside
+    ///   `ComponentRenderState` — can `Rc::clone` it.
     /// - `slot`: to find where to put the node.
     ///
     /// Returns a reference to the newly inserted element.
@@ -37,7 +44,7 @@ pub(super) trait Reconcilable {
 
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: i32,
+        parent: &Rc<Element>,
         slot: DomSlot,
     ) -> (DomSlot, Self::Bundle);
 
@@ -49,7 +56,7 @@ pub(super) trait Reconcilable {
     ///
     /// Parameters:
     /// - `parent_scope`: the parent `Scope` used for passing messages to the parent `Component`.
-    /// - `parent`: the parent node id in the DOM.
+    /// - `parent`: shared handle to the parent element in the DOM.
     /// - `slot`: the slot in `parent`'s children where to put the node.
     /// - `bundle`: the node that this node will be replacing in the DOM. This method will remove
     ///   the `bundle` from the `parent` if it is of the wrong kind, and otherwise reuse it.
@@ -60,7 +67,7 @@ pub(super) trait Reconcilable {
 
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: i32,
+        parent: &Rc<Element>,
         slot: DomSlot,
         bundle: &mut BNode,
     ) -> DomSlot;
@@ -69,7 +76,7 @@ pub(super) trait Reconcilable {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: i32,
+        parent: &Rc<Element>,
         slot: DomSlot,
         bundle: &mut Self::Bundle,
     ) -> DomSlot;
@@ -80,7 +87,7 @@ pub(super) trait Reconcilable {
 
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: i32,
+        parent: &Rc<Element>,
         slot: DomSlot,
         bundle: &mut BNode,
     ) -> DomSlot

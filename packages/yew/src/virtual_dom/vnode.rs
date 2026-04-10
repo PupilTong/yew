@@ -5,11 +5,13 @@ use std::iter::FromIterator;
 use std::rc::Rc;
 use std::{fmt, mem};
 
+use rust_wasm_binding::{Element, NodeOps};
+
 use super::{Key, VChild, VComp, VList, VPortal, VSuspense, VTag, VText};
 use crate::html::{BaseComponent, ImplicitClone};
 
 /// Bind virtual element to a DOM reference.
-#[derive(Clone, ImplicitClone, PartialEq)]
+#[derive(Clone, ImplicitClone)]
 #[must_use = "html does not do anything unless returned to Yew for rendering."]
 pub enum VNode {
     /// A bind between `VTag` and an element node.
@@ -22,10 +24,35 @@ pub enum VNode {
     VList(Rc<VList>),
     /// A portal to another part of the document
     VPortal(Rc<VPortal>),
-    /// A holder for a raw Paws node id (e.g. for replacing a node).
-    VRef(i32),
+    /// A holder for a raw, user-supplied DOM element node. The wrapper is
+    /// shared via `Rc` so cloning a [`VNode`] does not duplicate the
+    /// underlying slab id.
+    VRef(Rc<Element>),
     /// A suspendible document fragment.
     VSuspense(Rc<VSuspense>),
+}
+
+impl PartialEq for VNode {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (VNode::VTag(left), VNode::VTag(right)) => left == right,
+            (VNode::VText(left), VNode::VText(right)) => left == right,
+            (VNode::VComp(left), VNode::VComp(right)) => left == right,
+            (VNode::VList(left), VNode::VList(right)) => left == right,
+            (VNode::VPortal(left), VNode::VPortal(right)) => left == right,
+            // Two `VRef`s are equal when they refer to the same Paws slab id —
+            // either through pointer equality of the `Rc` (cheap) or by id
+            // comparison as a fallback. `Element` itself does not implement
+            // `PartialEq` because two distinct `Element` values cannot exist
+            // for the same slab id (Drop would double-free), but two `Rc`
+            // clones of the same `Element` legitimately compare equal here.
+            (VNode::VRef(left), VNode::VRef(right)) => {
+                Rc::ptr_eq(left, right) || left.id() == right.id()
+            }
+            (VNode::VSuspense(left), VNode::VSuspense(right)) => left == right,
+            _ => false,
+        }
+    }
 }
 
 impl VNode {
@@ -139,7 +166,7 @@ impl fmt::Debug for VNode {
             VNode::VText(ref vtext) => vtext.fmt(f),
             VNode::VComp(ref vcomp) => vcomp.fmt(f),
             VNode::VList(ref vlist) => vlist.fmt(f),
-            VNode::VRef(vref) => write!(f, "VRef({vref})"),
+            VNode::VRef(ref vref) => write!(f, "VRef({})", vref.id()),
             VNode::VPortal(ref vportal) => vportal.fmt(f),
             VNode::VSuspense(ref vsuspense) => vsuspense.fmt(f),
         }

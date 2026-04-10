@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 use indexmap::IndexMap;
+use rust_wasm_binding::{Element, ElementOps, NodeOps};
 use yew::AttrValue;
 
 use super::Apply;
@@ -17,16 +18,15 @@ use crate::virtual_dom::{AttributeOrProperty, Attributes};
 
 impl<T> Apply for Value<T> {
     type Bundle = Self;
-    type Element = i32;
 
-    fn apply(self, _root: &BSubtree, el: Self::Element) -> Self {
+    fn apply(self, _root: &BSubtree, el: &Element) -> Self {
         if let Some(v) = self.deref() {
             set_value_placeholder(el, v);
         }
         self
     }
 
-    fn apply_diff(self, _root: &BSubtree, el: Self::Element, bundle: &mut Self) {
+    fn apply_diff(self, _root: &BSubtree, el: &Element, bundle: &mut Self) {
         match (self.deref(), (*bundle).deref()) {
             (Some(new), Some(old)) => {
                 if new != old {
@@ -43,24 +43,23 @@ impl<T> Apply for Value<T> {
 /// Placeholder for input/textarea `.value = …`. Paws has no `set_property`
 /// host function yet, so we route through `set_attribute("value", …)`. This
 /// loses the DOM-property/attribute distinction but keeps the API shape.
-fn set_value_placeholder(el: i32, value: &str) {
-    if let Err(err) = rust_wasm_binding::set_attribute(el, "value", value) {
-        tracing::warn!(?err, el, "failed to set `value` attribute");
+fn set_value_placeholder(el: &Element, value: &str) {
+    if let Err(err) = el.set_attribute("value", value) {
+        tracing::warn!(?err, el = el.id(), "failed to set `value` attribute");
     }
 }
 
-fn set_checked_placeholder(el: i32, checked: bool) {
+fn set_checked_placeholder(el: &Element, checked: bool) {
     let value = if checked { "true" } else { "false" };
-    if let Err(err) = rust_wasm_binding::set_attribute(el, "checked", value) {
-        tracing::warn!(?err, el, "failed to set `checked` attribute");
+    if let Err(err) = el.set_attribute("checked", value) {
+        tracing::warn!(?err, el = el.id(), "failed to set `checked` attribute");
     }
 }
 
 impl Apply for InputFields {
     type Bundle = Self;
-    type Element = i32;
 
-    fn apply(mut self, root: &BSubtree, el: Self::Element) -> Self {
+    fn apply(mut self, root: &BSubtree, el: &Element) -> Self {
         // IMPORTANT! This parameter has to be set every time it's explicitly given
         // to prevent strange behaviour in the browser when the DOM changes
         if let Some(checked) = self.checked {
@@ -71,7 +70,7 @@ impl Apply for InputFields {
         self
     }
 
-    fn apply_diff(self, root: &BSubtree, el: Self::Element, bundle: &mut Self) {
+    fn apply_diff(self, root: &BSubtree, el: &Element, bundle: &mut Self) {
         if let Some(checked) = self.checked {
             set_checked_placeholder(el, checked);
         }
@@ -82,18 +81,17 @@ impl Apply for InputFields {
 
 impl Apply for TextareaFields {
     type Bundle = Value<TextareaMarker>;
-    type Element = i32;
 
-    fn apply(self, root: &BSubtree, el: Self::Element) -> Self::Bundle {
+    fn apply(self, root: &BSubtree, el: &Element) -> Self::Bundle {
         if let Some(def) = self.defaultvalue {
-            if let Err(err) = rust_wasm_binding::set_attribute(el, "defaultValue", def.as_str()) {
-                tracing::warn!(?err, el, "failed to set `defaultValue` attribute");
+            if let Err(err) = el.set_attribute("defaultValue", def.as_str()) {
+                tracing::warn!(?err, el = el.id(), "failed to set `defaultValue` attribute");
             }
         }
         self.value.apply(root, el)
     }
 
-    fn apply_diff(self, root: &BSubtree, el: Self::Element, bundle: &mut Self::Bundle) {
+    fn apply_diff(self, root: &BSubtree, el: &Element, bundle: &mut Self::Bundle) {
         self.value.apply_diff(root, el, bundle)
     }
 }
@@ -107,7 +105,7 @@ const _: Option<InputMarker> = None;
 impl Attributes {
     #[cold]
     fn apply_diff_index_maps(
-        el: i32,
+        el: &Element,
         new: &IndexMap<AttrValue, AttributeOrProperty>,
         old: &IndexMap<AttrValue, AttributeOrProperty>,
     ) {
@@ -132,7 +130,7 @@ impl Attributes {
     /// Convert [Attributes] pair to [HashMap]s and patch changes to `el`.
     /// Works with any [Attributes] variants.
     #[cold]
-    fn apply_diff_as_maps<'a>(el: i32, new: &'a Self, old: &'a Self) {
+    fn apply_diff_as_maps<'a>(el: &Element, new: &'a Self, old: &'a Self) {
         fn collect(src: &Attributes) -> HashMap<&str, &AttributeOrProperty> {
             use Attributes::*;
 
@@ -168,28 +166,27 @@ impl Attributes {
         }
     }
 
-    fn set(el: i32, key: &str, value: &AttributeOrProperty) {
+    fn set(el: &Element, key: &str, value: &AttributeOrProperty) {
         let string_value: &str = match value {
             AttributeOrProperty::Attribute(v) => v.as_ref(),
             AttributeOrProperty::Static(v) => v,
         };
-        if let Err(err) = rust_wasm_binding::set_attribute(el, key, string_value) {
-            tracing::warn!(?err, el, key, "failed to set attribute");
+        if let Err(err) = el.set_attribute(key, string_value) {
+            tracing::warn!(?err, el = el.id(), key, "failed to set attribute");
         }
     }
 
-    fn remove(el: i32, key: &str, _old_value: &AttributeOrProperty) {
-        if let Err(err) = rust_wasm_binding::remove_attribute(el, key) {
-            tracing::warn!(?err, el, key, "failed to remove attribute");
+    fn remove(el: &Element, key: &str, _old_value: &AttributeOrProperty) {
+        if let Err(err) = el.remove_attribute(key) {
+            tracing::warn!(?err, el = el.id(), key, "failed to remove attribute");
         }
     }
 }
 
 impl Apply for Attributes {
     type Bundle = Self;
-    type Element = i32;
 
-    fn apply(self, _root: &BSubtree, el: i32) -> Self {
+    fn apply(self, _root: &BSubtree, el: &Element) -> Self {
         match &self {
             Self::Static(arr) => {
                 for (k, v) in arr.iter() {
@@ -212,7 +209,7 @@ impl Apply for Attributes {
         self
     }
 
-    fn apply_diff(self, _root: &BSubtree, el: i32, bundle: &mut Self) {
+    fn apply_diff(self, _root: &BSubtree, el: &Element, bundle: &mut Self) {
         #[inline]
         fn ptr_eq<T>(a: &[T], b: &[T]) -> bool {
             std::ptr::eq(a, b)

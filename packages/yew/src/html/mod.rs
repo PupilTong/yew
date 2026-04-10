@@ -14,6 +14,8 @@ pub use component::*;
 pub use conversion::*;
 pub use error::*;
 pub use listener::*;
+#[cfg(feature = "csr")]
+use rust_wasm_binding::Element;
 
 use crate::sealed::Sealed;
 use crate::virtual_dom::{VNode, VPortal};
@@ -93,6 +95,7 @@ mod feat_csr {
 
 /// Render children into a DOM node that exists outside the hierarchy of the parent
 /// component.
-pub fn create_portal(child: Html, host: i32) -> Html {
+#[cfg(feature = "csr")]
+pub fn create_portal(child: Html, host: Rc<Element>) -> Html {
     VNode::VPortal(Rc::new(VPortal::new(child, host)))
 }

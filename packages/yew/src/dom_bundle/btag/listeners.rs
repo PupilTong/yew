@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::ops::Deref;
 use std::rc::Rc;
 
+use rust_wasm_binding::{Element, NodeOps};
+
 use super::Apply;
 use crate::dom_bundle::{test_log, BSubtree, EventDescriptor};
 use crate::virtual_dom::{Listener, Listeners};
@@ -54,16 +56,15 @@ pub(super) enum ListenerRegistration {
 
 impl Apply for Listeners {
     type Bundle = ListenerRegistration;
-    type Element = i32;
 
-    fn apply(self, root: &BSubtree, el: Self::Element) -> ListenerRegistration {
+    fn apply(self, root: &BSubtree, el: &Element) -> ListenerRegistration {
         match self {
-            Self::Pending(pending) => ListenerRegistration::register(root, el, &pending),
+            Self::Pending(pending) => ListenerRegistration::register(root, el.id(), &pending),
             Self::None => ListenerRegistration::NoReg,
         }
     }
 
-    fn apply_diff(self, root: &BSubtree, el: Self::Element, bundle: &mut ListenerRegistration) {
+    fn apply_diff(self, root: &BSubtree, el: &Element, bundle: &mut ListenerRegistration) {
         use ListenerRegistration::*;
         use Listeners::*;
 
@@ -74,7 +75,7 @@ impl Apply for Listeners {
                 root.with_listener_registry(|reg| reg.patch(root, id, &pending));
             }
             (Pending(pending), bundle @ NoReg) => {
-                *bundle = ListenerRegistration::register(root, el, &pending);
+                *bundle = ListenerRegistration::register(root, el.id(), &pending);
                 test_log!(
                     "registering listeners for {}",
                     match bundle {

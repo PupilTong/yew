@@ -3,6 +3,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use rust_wasm_binding::{Element, NodeOps};
+
 /// Sentinel node id used by the trap check in debug builds. Real Paws node
 /// ids are always `>= 0`, so `i32::MIN` is guaranteed not to collide.
 const TRAP_SENTINEL: i32 = i32::MIN;
@@ -102,11 +104,11 @@ impl DomSlot {
 
     /// Insert `node` at the position denoted by this slot. `parent` must be the actual parent
     /// element of the children that this slot is implicitly a part of.
-    pub(super) fn insert(&self, parent: i32, node: i32) {
+    pub(super) fn insert(&self, parent: &Element, node: i32) {
         self.with_next_sibling_check_trap(|next_sibling: Option<i32>| {
             // Paws' `insert_before` takes `-1` as the "at end" sentinel.
             let ref_child = next_sibling.unwrap_or(-1);
-            if let Err(err) = rust_wasm_binding::insert_before(parent, node, ref_child) {
+            if let Err(err) = rust_wasm_binding::insert_before(parent.id(), node, ref_child) {
                 let msg = if next_sibling.is_some() {
                     "failed to insert node before next sibling"
                 } else {
@@ -114,7 +116,7 @@ impl DomSlot {
                 };
                 tracing::error!(
                     ?err,
-                    parent,
+                    parent = parent.id(),
                     next_sibling = ?next_sibling,
                     node,
                     "{msg}"

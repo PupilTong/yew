@@ -31,6 +31,8 @@ use std::hash::{Hash, Hasher};
 use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
+use rust_wasm_binding::{Element, NodeOps};
+
 use super::{test_log, Registry};
 use crate::virtual_dom::{Listener, ListenerKind};
 
@@ -406,18 +408,18 @@ impl BSubtree {
     }
 
     /// Create a bundle root at the specified host element
-    pub fn create_root(host_element: i32) -> Self {
-        Self::do_create_root(host_element, None)
+    pub fn create_root(host_element: &Element) -> Self {
+        Self::do_create_root(host_element.id(), None)
     }
 
     /// Create a bundle root at the specified host element, that is logically
     /// mounted under the specified element in this tree.
-    pub fn create_subroot(&self, mount_point: i32, host_element: i32) -> Self {
+    pub fn create_subroot(&self, mount_point: &Element, host_element: &Element) -> Self {
         let parent_information = ParentingInformation {
             parent_root: self.0.clone(),
-            mount_element: mount_point,
+            mount_element: mount_point.id(),
         };
-        Self::do_create_root(host_element, Some(parent_information))
+        Self::do_create_root(host_element.id(), Some(parent_information))
     }
 
     /// Ensure the event described is handled on all subtrees

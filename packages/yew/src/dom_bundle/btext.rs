@@ -1,6 +1,8 @@
 //! This module contains the bundle implementation of text [BText].
 
-use rust_wasm_binding::{NodeOps, Text};
+use std::rc::Rc;
+
+use rust_wasm_binding::{Element, NodeOps, Text};
 
 use super::{BNode, BSubtree, DomSlot, Reconcilable, ReconcileTarget};
 use crate::html::AnyScope;
@@ -14,7 +16,7 @@ pub(super) struct BText {
 }
 
 impl ReconcileTarget for BText {
-    fn detach(self, _root: &BSubtree, parent: i32, parent_to_detach: bool) {
+    fn detach(self, _root: &BSubtree, parent: &Rc<Element>, parent_to_detach: bool) {
         let Self { text: _, text_node } = self;
         let node_id = text_node.id();
 
@@ -26,14 +28,14 @@ impl ReconcileTarget for BText {
         } else {
             // Physically detach from parent. Drop (below) will destroy
             // the slab entry.
-            if let Err(err) = rust_wasm_binding::remove_child(parent, node_id) {
+            if let Err(err) = rust_wasm_binding::remove_child(parent.id(), node_id) {
                 tracing::warn!(?err, "Node not found to remove VText");
             }
             // text_node dropped here → destroy_element
         }
     }
 
-    fn shift(&self, next_parent: i32, slot: DomSlot) -> DomSlot {
+    fn shift(&self, next_parent: &Rc<Element>, slot: DomSlot) -> DomSlot {
         let node_id = self.text_node.id();
         slot.insert(next_parent, node_id);
         DomSlot::at(node_id)
@@ -47,7 +49,7 @@ impl Reconcilable for VText {
         self,
         _root: &BSubtree,
         _parent_scope: &AnyScope,
-        parent: i32,
+        parent: &Rc<Element>,
         slot: DomSlot,
     ) -> (DomSlot, Self::Bundle) {
         let Self { text } = self;
@@ -63,7 +65,7 @@ impl Reconcilable for VText {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: i32,
+        parent: &Rc<Element>,
         slot: DomSlot,
         bundle: &mut BNode,
     ) -> DomSlot {
@@ -77,7 +79,7 @@ impl Reconcilable for VText {
         self,
         _root: &BSubtree,
         _parent_scope: &AnyScope,
-        _parent: i32,
+        _parent: &Rc<Element>,
         _slot: DomSlot,
         btext: &mut Self::Bundle,
     ) -> DomSlot {

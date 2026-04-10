@@ -3,6 +3,9 @@
 use std::any::TypeId;
 use std::borrow::Borrow;
 use std::fmt;
+use std::rc::Rc;
+
+use rust_wasm_binding::Element;
 
 use super::{BNode, BSubtree, DomSlot, DynamicDomSlot, Reconcilable, ReconcileTarget};
 use crate::html::{AnyScope, Scoped};
@@ -34,11 +37,11 @@ impl fmt::Debug for BComp {
 }
 
 impl ReconcileTarget for BComp {
-    fn detach(self, _root: &BSubtree, _parent: i32, parent_to_detach: bool) {
+    fn detach(self, _root: &BSubtree, _parent: &Rc<Element>, parent_to_detach: bool) {
         self.scope.destroy_boxed(parent_to_detach);
     }
 
-    fn shift(&self, next_parent: i32, slot: DomSlot) -> DomSlot {
+    fn shift(&self, next_parent: &Rc<Element>, slot: DomSlot) -> DomSlot {
         self.scope.shift_node(next_parent, slot);
 
         self.own_position.to_position()
@@ -52,7 +55,7 @@ impl Reconcilable for VComp {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: i32,
+        parent: &Rc<Element>,
         slot: DomSlot,
     ) -> (DomSlot, Self::Bundle) {
         let VComp {
@@ -79,7 +82,7 @@ impl Reconcilable for VComp {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: i32,
+        parent: &Rc<Element>,
         slot: DomSlot,
         bundle: &mut BNode,
     ) -> DomSlot {
@@ -98,7 +101,7 @@ impl Reconcilable for VComp {
         self,
         _root: &BSubtree,
         _parent_scope: &AnyScope,
-        _parent: i32,
+        _parent: &Rc<Element>,
         slot: DomSlot,
         bcomp: &mut Self::Bundle,
     ) -> DomSlot {

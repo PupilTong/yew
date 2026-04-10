@@ -3,6 +3,9 @@
 use std::any::Any;
 use std::rc::Rc;
 
+#[cfg(feature = "csr")]
+use rust_wasm_binding::Element;
+
 use super::scope::{AnyScope, Scope};
 use super::BaseComponent;
 #[cfg(feature = "csr")]
@@ -17,7 +20,13 @@ pub(crate) enum ComponentRenderState {
     Render {
         bundle: Bundle,
         root: BSubtree,
-        parent: i32,
+        /// Shared handle to the parent element this component is mounted
+        /// under. Held as `Rc<Element>` so the component can outlive the
+        /// trait method scope and so the parent's enclosing
+        /// [BTag](crate::dom_bundle::BTag) (or
+        /// [AppHandle](crate::AppHandle)) can keep its own clone of the
+        /// `Rc` in parallel.
+        parent: Rc<Element>,
         /// The dom position in front of the next sibling.
         /// Gets updated when the bundle in which this component occurs gets re-rendered and is
         /// shared with the children of this component.
@@ -53,7 +62,7 @@ impl std::fmt::Debug for ComponentRenderState {
 
 #[cfg(feature = "csr")]
 impl ComponentRenderState {
-    pub(crate) fn shift(&mut self, next_parent: i32, next_slot: DomSlot) {
+    pub(crate) fn shift(&mut self, next_parent: Rc<Element>, next_slot: DomSlot) {
         match self {
             #[cfg(feature = "csr")]
             Self::Render {
@@ -64,7 +73,7 @@ impl ComponentRenderState {
             } => {
                 *parent = next_parent;
                 sibling_slot.reassign(next_slot);
-                bundle.shift(*parent, sibling_slot.to_position());
+                bundle.shift(parent, sibling_slot.to_position());
             }
         }
     }
@@ -288,7 +297,7 @@ impl ComponentState {
             #[cfg(feature = "csr")]
             ComponentRenderState::Render {
                 bundle,
-                parent,
+                ref parent,
                 ref root,
                 ..
             } => {
@@ -378,7 +387,7 @@ impl ComponentState {
             #[cfg(feature = "csr")]
             ComponentRenderState::Render {
                 ref mut bundle,
-                parent,
+                ref parent,
                 ref root,
                 ref sibling_slot,
                 ref mut own_slot,

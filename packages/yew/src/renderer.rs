@@ -2,6 +2,9 @@ use std::cell::Cell;
 use std::panic::PanicHookInfo as PanicInfo;
 use std::rc::Rc;
 
+#[cfg(feature = "csr")]
+use rust_wasm_binding::Element;
+
 use crate::app_handle::AppHandle;
 use crate::html::BaseComponent;
 
@@ -27,7 +30,8 @@ pub fn set_custom_panic_hook(hook: Box<dyn Fn(&PanicInfo<'_>) + Sync + Send + 's
 ///
 /// Unlike upstream yew the Paws fork does not fall back to
 /// `document.body()` — there is no browser document to query. Callers
-/// always pass the Paws node id of the element they want to mount into.
+/// always pass an `Rc<Element>` host they own (so the Paws slab entry stays
+/// alive as long as the renderer references it).
 #[cfg(feature = "csr")]
 #[derive(Debug)]
 #[must_use = "Renderer does nothing unless render() is called."]
@@ -35,28 +39,31 @@ pub struct Renderer<COMP>
 where
     COMP: BaseComponent + 'static,
 {
-    /// Paws node id of the host element.
-    root: i32,
+    /// Shared handle to the host element. The renderer keeps an `Rc` so
+    /// the Paws slab id remains valid for the entire app lifetime.
+    root: Rc<Element>,
     props: COMP::Properties,
 }
 
+#[cfg(feature = "csr")]
 impl<COMP> Renderer<COMP>
 where
     COMP: BaseComponent + 'static,
     COMP::Properties: Default,
 {
     /// Creates a [Renderer] that renders into a custom root with default properties.
-    pub fn with_root(root: i32) -> Self {
+    pub fn with_root(root: Rc<Element>) -> Self {
         Self::with_root_and_props(root, Default::default())
     }
 }
 
+#[cfg(feature = "csr")]
 impl<COMP> Renderer<COMP>
 where
     COMP: BaseComponent + 'static,
 {
     /// Creates a [Renderer] that renders into a custom root with custom properties.
-    pub fn with_root_and_props(root: i32, props: COMP::Properties) -> Self {
+    pub fn with_root_and_props(root: Rc<Element>, props: COMP::Properties) -> Self {
         Self { root, props }
     }
 

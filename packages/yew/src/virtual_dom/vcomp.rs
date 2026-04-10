@@ -4,6 +4,9 @@ use std::any::{Any, TypeId};
 use std::fmt;
 use std::rc::Rc;
 
+#[cfg(feature = "csr")]
+use rust_wasm_binding::Element;
+
 use super::Key;
 #[cfg(feature = "csr")]
 use crate::dom_bundle::{BSubtree, DomSlot, DynamicDomSlot};
@@ -54,7 +57,7 @@ pub(crate) trait Mountable {
         self: Box<Self>,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: i32,
+        parent: &Rc<Element>,
         slot: DomSlot,
     ) -> (Box<dyn Scoped>, DynamicDomSlot);
 
@@ -96,11 +99,14 @@ impl<COMP: BaseComponent> Mountable for PropsWrapper<COMP> {
         self: Box<Self>,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: i32,
+        parent: &Rc<Element>,
         slot: DomSlot,
     ) -> (Box<dyn Scoped>, DynamicDomSlot) {
         let scope: Scope<COMP> = Scope::new(Some(parent_scope.clone()));
-        let own_slot = scope.mount_in_place(root.clone(), parent, slot, self.props);
+        // `mount_in_place` takes ownership of the parent `Rc<Element>` so
+        // it can store a clone in `ComponentRenderState::Render`. We clone
+        // here from the borrowed Rc handed to us through the trait.
+        let own_slot = scope.mount_in_place(root.clone(), Rc::clone(parent), slot, self.props);
 
         (Box::new(scope), own_slot)
     }
