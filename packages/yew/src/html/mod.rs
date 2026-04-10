@@ -17,7 +17,9 @@ pub use listener::*;
 use rust_wasm_binding::Element;
 
 use crate::sealed::Sealed;
-use crate::virtual_dom::{VNode, VPortal};
+use crate::virtual_dom::VNode;
+#[cfg(feature = "csr")]
+use crate::virtual_dom::VPortal;
 
 /// A type which expected as a result of `view` function implementation.
 pub type Html = VNode;

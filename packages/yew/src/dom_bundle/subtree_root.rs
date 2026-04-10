@@ -59,6 +59,12 @@ fn set_subtree_id(el: i32, tree_id: TreeId) {
     });
 }
 
+fn forget_subtree_id(el: i32) {
+    SUBTREE_IDS.with(|m| {
+        m.borrow_mut().remove(&el);
+    });
+}
+
 #[allow(dead_code)]
 fn get_cache_key(el: i32) -> Option<u32> {
     CACHE_KEYS.with(|m| m.borrow().get(&el).copied())
@@ -67,6 +73,12 @@ fn get_cache_key(el: i32) -> Option<u32> {
 fn set_cache_key(el: i32, key: u32) {
     CACHE_KEYS.with(|m| {
         m.borrow_mut().insert(el, key);
+    });
+}
+
+fn forget_cache_key(el: i32) {
+    CACHE_KEYS.with(|m| {
+        m.borrow_mut().remove(&el);
     });
 }
 
@@ -440,5 +452,14 @@ impl BSubtree {
 
     pub fn brand_element(&self, el: i32) {
         set_subtree_id(el, self.0.subtree_id);
+    }
+
+    /// Remove subtree branding and any cached keys from a node that is
+    /// being detached. This prevents stale entries in the guest-side
+    /// `SUBTREE_IDS` / `CACHE_KEYS` maps from misrouting events after the
+    /// Paws slab id is recycled for an unrelated node.
+    pub fn unbrand_element(&self, el: i32) {
+        forget_subtree_id(el);
+        forget_cache_key(el);
     }
 }

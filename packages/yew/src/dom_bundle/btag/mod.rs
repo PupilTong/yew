@@ -81,27 +81,32 @@ impl ReconcileTarget for BTag {
         listeners.unregister(root);
         let node_id = reference.id();
 
+        // Remove subtree branding and cached keys so that if the Paws
+        // slab recycles this id, stale entries don't misroute events.
+        root.unbrand_element(node_id);
+
         // Recursively detach children FIRST so listeners are cleaned up
         // before the host-side cascade.
         if let BTagInner::Other { child_bundle, .. } = inner {
             child_bundle.detach(root, &reference, true);
         }
 
-        if !parent_to_detach {
-            // Physically detach from the parent. The reference's last
-            // `Rc<Element>` clone (this one, plus any held by children
-            // components that have already been destroyed) eventually
-            // calls `destroy_element` to release the slab entry. The
-            // destructor swallows errors silently, so a host-side cascade
-            // (when `parent_to_detach == true`) won't double-fire.
+        if parent_to_detach {
+            // Parent is going away; the host will cascade `destroy_element`
+            // through the entire subtree. Disarm this wrapper's Drop to
+            // avoid a double-destroy on a slab id that may have been
+            // recycled by the time this Rc is released.
+            if let Some(element) = Rc::into_inner(reference) {
+                element.into_raw();
+            }
+        } else {
+            // Physically detach from the parent, then let Drop run
+            // `destroy_element` on the slab entry.
             if let Err(err) = rust_wasm_binding::remove_child(parent.id(), node_id) {
                 tracing::warn!(?err, "Node not found to remove VTag");
             }
+            // `reference` drops here → destroy_element
         }
-        // `reference` drops at the end of this scope. If it is the last
-        // surviving `Rc<Element>` clone the inner `Element`'s destructor
-        // calls `destroy_element`; any earlier host-side cascade has
-        // already removed the slab entry and the destroy call is a no-op.
 
         // It could be that the ref was already reused when rendering another element.
         // Only unset the ref if it still belongs to our node.

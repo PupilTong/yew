@@ -319,9 +319,11 @@ pub mod prelude {
     pub use crate::context::{ContextHandle, ContextProvider};
     pub use crate::events::*;
     pub use crate::functional::*;
+    #[cfg(feature = "csr")]
+    pub use crate::html::create_portal;
     pub use crate::html::{
-        create_portal, BaseComponent, Children, ChildrenWithProps, Classes, Component, Context,
-        Html, HtmlResult, NodeRef, Properties,
+        BaseComponent, Children, ChildrenWithProps, Classes, Component, Context, Html, HtmlResult,
+        NodeRef, Properties,
     };
     pub use crate::macros::{classes, html, html_nested};
     pub use crate::suspense::Suspense;
