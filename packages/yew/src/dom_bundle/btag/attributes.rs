@@ -2,86 +2,77 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 use indexmap::IndexMap;
-use wasm_bindgen::{intern, JsValue};
-use web_sys::{Element, HtmlInputElement as InputElement, HtmlTextAreaElement as TextAreaElement};
+use rust_wasm_binding::{Element, ElementOps, NodeOps};
 use yew::AttrValue;
 
 use super::Apply;
 use crate::dom_bundle::BSubtree;
-use crate::virtual_dom::vtag::{InputFields, TextareaFields, Value};
+use crate::virtual_dom::vtag::{InputFields, InputMarker, TextareaFields, TextareaMarker, Value};
 use crate::virtual_dom::{AttributeOrProperty, Attributes};
 
-impl<T: AccessValue> Apply for Value<T> {
-    type Bundle = Self;
-    type Element = T;
+// In the browser fork Value<T> stored its "current DOM value" by calling the
+// element's `.value()` getter. On Paws there is no property accessor — DOM
+// properties and attributes collapse into a single `set_attribute` call
+// (documented as a placeholder in the fork's Phase 2 plan) — so the `Value`
+// apply paths simply forward the new string through the attribute path.
 
-    fn apply(self, _root: &BSubtree, el: &Self::Element) -> Self {
+impl<T> Apply for Value<T> {
+    type Bundle = Self;
+
+    fn apply(self, _root: &BSubtree, el: &Element) -> Self {
         if let Some(v) = self.deref() {
-            el.set_value(v);
+            set_value_placeholder(el, v);
         }
         self
     }
 
-    fn apply_diff(self, _root: &BSubtree, el: &Self::Element, bundle: &mut Self) {
+    fn apply_diff(self, _root: &BSubtree, el: &Element, bundle: &mut Self) {
         match (self.deref(), (*bundle).deref()) {
-            (Some(new), Some(_)) => {
-                // Refresh value from the DOM. It might have changed.
-                if new.as_ref() != el.value() {
-                    el.set_value(new);
+            (Some(new), Some(old)) => {
+                if new != old {
+                    set_value_placeholder(el, new);
                 }
             }
-            (Some(new), None) => el.set_value(new),
-            (None, Some(_)) => el.set_value(""),
+            (Some(new), None) => set_value_placeholder(el, new),
+            (None, Some(_)) => set_value_placeholder(el, ""),
             (None, None) => (),
         }
     }
 }
 
-macro_rules! impl_access_value {
-    ($( $type:ty )*) => {
-        $(
-            impl AccessValue for $type {
-                #[inline]
-                fn value(&self) -> String {
-                    <$type>::value(&self)
-                }
-
-                #[inline]
-                fn set_value(&self, v: &str) {
-                    <$type>::set_value(&self, v)
-                }
-            }
-        )*
-    };
+/// Placeholder for input/textarea `.value = …`. Paws has no `set_property`
+/// host function yet, so we route through `set_attribute("value", …)`. This
+/// loses the DOM-property/attribute distinction but keeps the API shape.
+fn set_value_placeholder(el: &Element, value: &str) {
+    if let Err(err) = el.set_attribute("value", value) {
+        tracing::warn!(?err, el = el.id(), "failed to set `value` attribute");
+    }
 }
-impl_access_value! {InputElement TextAreaElement}
 
-/// Able to have its value read or set
-pub(super) trait AccessValue {
-    fn value(&self) -> String;
-    fn set_value(&self, v: &str);
+fn set_checked_placeholder(el: &Element, checked: bool) {
+    let value = if checked { "true" } else { "false" };
+    if let Err(err) = el.set_attribute("checked", value) {
+        tracing::warn!(?err, el = el.id(), "failed to set `checked` attribute");
+    }
 }
 
 impl Apply for InputFields {
     type Bundle = Self;
-    type Element = InputElement;
 
-    fn apply(mut self, root: &BSubtree, el: &Self::Element) -> Self {
+    fn apply(mut self, root: &BSubtree, el: &Element) -> Self {
         // IMPORTANT! This parameter has to be set every time it's explicitly given
         // to prevent strange behaviour in the browser when the DOM changes
         if let Some(checked) = self.checked {
-            el.set_checked(checked);
+            set_checked_placeholder(el, checked);
         }
 
         self.value = self.value.apply(root, el);
         self
     }
 
-    fn apply_diff(self, root: &BSubtree, el: &Self::Element, bundle: &mut Self) {
-        // IMPORTANT! This parameter has to be set every time it's explicitly given
-        // to prevent strange behaviour in the browser when the DOM changes
+    fn apply_diff(self, root: &BSubtree, el: &Element, bundle: &mut Self) {
         if let Some(checked) = self.checked {
-            el.set_checked(checked);
+            set_checked_placeholder(el, checked);
         }
 
         self.value.apply_diff(root, el, &mut bundle.value);
@@ -89,20 +80,27 @@ impl Apply for InputFields {
 }
 
 impl Apply for TextareaFields {
-    type Bundle = Value<TextAreaElement>;
-    type Element = TextAreaElement;
+    type Bundle = Value<TextareaMarker>;
 
-    fn apply(self, root: &BSubtree, el: &Self::Element) -> Self::Bundle {
+    fn apply(self, root: &BSubtree, el: &Element) -> Self::Bundle {
         if let Some(def) = self.defaultvalue {
-            _ = el.set_default_value(def.as_str());
+            if let Err(err) = el.set_attribute("defaultValue", def.as_str()) {
+                tracing::warn!(?err, el = el.id(), "failed to set `defaultValue` attribute");
+            }
         }
         self.value.apply(root, el)
     }
 
-    fn apply_diff(self, root: &BSubtree, el: &Self::Element, bundle: &mut Self::Bundle) {
+    fn apply_diff(self, root: &BSubtree, el: &Element, bundle: &mut Self::Bundle) {
         self.value.apply_diff(root, el, bundle)
     }
 }
+
+// Silence unused-import warnings from the marker type aliases — the markers
+// are load-bearing for type inference on `Value<T>` but aren't referenced by
+// name outside the macro-expanded call sites.
+#[allow(dead_code)]
+const _: Option<InputMarker> = None;
 
 impl Attributes {
     #[cold]
@@ -169,37 +167,24 @@ impl Attributes {
     }
 
     fn set(el: &Element, key: &str, value: &AttributeOrProperty) {
-        match value {
-            AttributeOrProperty::Attribute(value) => el
-                .set_attribute(intern(key), value)
-                .expect("invalid attribute key"),
-            AttributeOrProperty::Static(value) => el
-                .set_attribute(intern(key), value)
-                .expect("invalid attribute key"),
-            AttributeOrProperty::Property(value) => {
-                let key = JsValue::from_str(key);
-                js_sys::Reflect::set(el.as_ref(), &key, value).expect("could not set property");
-            }
+        let string_value: &str = match value {
+            AttributeOrProperty::Attribute(v) => v.as_ref(),
+            AttributeOrProperty::Static(v) => v,
+        };
+        if let Err(err) = el.set_attribute(key, string_value) {
+            tracing::warn!(?err, el = el.id(), key, "failed to set attribute");
         }
     }
 
-    fn remove(el: &Element, key: &str, old_value: &AttributeOrProperty) {
-        match old_value {
-            AttributeOrProperty::Attribute(_) | AttributeOrProperty::Static(_) => el
-                .remove_attribute(intern(key))
-                .expect("could not remove attribute"),
-            AttributeOrProperty::Property(_) => {
-                let key = JsValue::from_str(key);
-                js_sys::Reflect::set(el.as_ref(), &key, &JsValue::UNDEFINED)
-                    .expect("could not remove property");
-            }
+    fn remove(el: &Element, key: &str, _old_value: &AttributeOrProperty) {
+        if let Err(err) = el.remove_attribute(key) {
+            tracing::warn!(?err, el = el.id(), key, "failed to remove attribute");
         }
     }
 }
 
 impl Apply for Attributes {
     type Bundle = Self;
-    type Element = Element;
 
     fn apply(self, _root: &BSubtree, el: &Element) -> Self {
         match &self {

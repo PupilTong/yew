@@ -3,8 +3,9 @@
 use std::any::TypeId;
 use std::borrow::Borrow;
 use std::fmt;
+use std::rc::Rc;
 
-use web_sys::Element;
+use rust_wasm_binding::Element;
 
 use super::{BNode, BSubtree, DomSlot, DynamicDomSlot, Reconcilable, ReconcileTarget};
 use crate::html::{AnyScope, Scoped};
@@ -36,12 +37,12 @@ impl fmt::Debug for BComp {
 }
 
 impl ReconcileTarget for BComp {
-    fn detach(self, _root: &BSubtree, _parent: &Element, parent_to_detach: bool) {
+    fn detach(self, _root: &BSubtree, _parent: &Rc<Element>, parent_to_detach: bool) {
         self.scope.destroy_boxed(parent_to_detach);
     }
 
-    fn shift(&self, next_parent: &Element, slot: DomSlot) -> DomSlot {
-        self.scope.shift_node(next_parent.clone(), slot);
+    fn shift(&self, next_parent: &Rc<Element>, slot: DomSlot) -> DomSlot {
+        self.scope.shift_node(next_parent, slot);
 
         self.own_position.to_position()
     }
@@ -54,7 +55,7 @@ impl Reconcilable for VComp {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: &Element,
+        parent: &Rc<Element>,
         slot: DomSlot,
     ) -> (DomSlot, Self::Bundle) {
         let VComp {
@@ -64,7 +65,7 @@ impl Reconcilable for VComp {
             ..
         } = self;
 
-        let (scope, internal_ref) = mountable.mount(root, parent_scope, parent.to_owned(), slot);
+        let (scope, internal_ref) = mountable.mount(root, parent_scope, parent, slot);
 
         (
             internal_ref.to_position(),
@@ -81,7 +82,7 @@ impl Reconcilable for VComp {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: &Element,
+        parent: &Rc<Element>,
         slot: DomSlot,
         bundle: &mut BNode,
     ) -> DomSlot {
@@ -100,7 +101,7 @@ impl Reconcilable for VComp {
         self,
         _root: &BSubtree,
         _parent_scope: &AnyScope,
-        _parent: &Element,
+        _parent: &Rc<Element>,
         slot: DomSlot,
         bcomp: &mut Self::Bundle,
     ) -> DomSlot {

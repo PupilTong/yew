@@ -3,51 +3,43 @@
 mod attributes;
 mod listeners;
 
-use std::cell::RefCell;
-use std::collections::HashMap;
 use std::hint::unreachable_unchecked;
 use std::ops::DerefMut;
+use std::rc::Rc;
 
-use gloo::utils::document;
 use listeners::ListenerRegistration;
 pub use listeners::Registry;
-use wasm_bindgen::JsCast;
-use web_sys::{Element, HtmlTextAreaElement as TextAreaElement};
+use rust_wasm_binding::{Element, NodeOps};
 
 use super::{BNode, BSubtree, DomSlot, Reconcilable, ReconcileTarget};
 use crate::html::AnyScope;
 use crate::virtual_dom::vtag::{
-    InputFields, TextareaFields, VTagInner, Value, MATHML_NAMESPACE, SVG_NAMESPACE,
+    InputFields, TextareaFields, TextareaMarker, VTagInner, Value, MATHML_NAMESPACE, SVG_NAMESPACE,
 };
 use crate::virtual_dom::{AttrValue, Attributes, Key, VTag};
 use crate::NodeRef;
 
-/// Applies contained changes to DOM [web_sys::Element]
+/// Applies contained changes to an element via a borrowed wrapper.
 trait Apply {
-    /// [web_sys::Element] subtype to apply the changes to
-    type Element;
     type Bundle;
 
-    /// Apply contained values to [Element](Self::Element) with no ancestor
-    fn apply(self, root: &BSubtree, el: &Self::Element) -> Self::Bundle;
+    /// Apply contained values to `el` with no ancestor.
+    fn apply(self, root: &BSubtree, el: &Element) -> Self::Bundle;
 
-    /// Apply diff between [self] and `bundle` to [Element](Self::Element).
-    fn apply_diff(self, root: &BSubtree, el: &Self::Element, bundle: &mut Self::Bundle);
+    /// Apply diff between [self] and `bundle` to `el`.
+    fn apply_diff(self, root: &BSubtree, el: &Element, bundle: &mut Self::Bundle);
 }
 
 /// [BTag] fields that are specific to different [BTag] kinds.
 /// Decreases the memory footprint of [BTag] by avoiding impossible field and value combinations.
 #[derive(Debug)]
 enum BTagInner {
-    /// Fields specific to
-    /// [InputElement](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input)
+    /// Fields specific to `<input>` elements.
     Input(InputFields),
-    /// Fields specific to
-    /// [TextArea](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/textarea)
+    /// Fields specific to `<textarea>` elements.
     Textarea {
-        /// Contains a value of an
-        /// [TextArea](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/textarea)
-        value: Value<TextAreaElement>,
+        /// Contains a value of a `<textarea>` element.
+        value: Value<TextareaMarker>,
     },
     /// Fields for all other kinds of [VTag]s
     Other {
@@ -65,41 +57,68 @@ pub(super) struct BTag {
     inner: BTagInner,
     listeners: ListenerRegistration,
     attributes: Attributes,
-    /// A reference to the DOM [`Element`].
-    reference: Element,
+    /// RAII handle for the created element node. Wrapped in `Rc` so child
+    /// components / bundles can pass `&self.reference` (an `&Rc<Element>`)
+    /// down their attach/reconcile chains as the parent. The last drop of
+    /// the `Rc` releases the host-side slab slot.
+    reference: Rc<Element>,
     /// A node reference used for DOM access in Component lifecycle methods
     node_ref: NodeRef,
     key: Option<Key>,
 }
 
 impl ReconcileTarget for BTag {
-    fn detach(self, root: &BSubtree, parent: &Element, parent_to_detach: bool) {
-        self.listeners.unregister(root);
+    fn detach(self, root: &BSubtree, parent: &Rc<Element>, parent_to_detach: bool) {
+        let Self {
+            inner,
+            listeners,
+            attributes: _,
+            reference,
+            node_ref,
+            key: _,
+        } = self;
 
-        let node = self.reference;
-        // recursively remove its children
-        if let BTagInner::Other { child_bundle, .. } = self.inner {
-            // This tag will be removed, so there's no point to remove any child.
-            child_bundle.detach(root, &node, true);
+        listeners.unregister(root);
+        let node_id = reference.id();
+
+        // Remove subtree branding and cached keys so that if the Paws
+        // slab recycles this id, stale entries don't misroute events.
+        root.unbrand_element(node_id);
+
+        // Recursively detach children FIRST so listeners are cleaned up
+        // before the host-side cascade.
+        if let BTagInner::Other { child_bundle, .. } = inner {
+            child_bundle.detach(root, &reference, true);
         }
-        if !parent_to_detach {
-            let result = parent.remove_child(&node);
 
-            if result.is_err() {
-                tracing::warn!("Node not found to remove VTag");
+        if parent_to_detach {
+            // Parent is going away; the host will cascade `destroy_element`
+            // through the entire subtree. Disarm this wrapper's Drop to
+            // avoid a double-destroy on a slab id that may have been
+            // recycled by the time this Rc is released.
+            if let Some(element) = Rc::into_inner(reference) {
+                element.into_raw();
             }
+        } else {
+            // Physically detach from the parent, then let Drop run
+            // `destroy_element` on the slab entry.
+            if let Err(err) = rust_wasm_binding::remove_child(parent.id(), node_id) {
+                tracing::warn!(?err, "Node not found to remove VTag");
+            }
+            // `reference` drops here → destroy_element
         }
+
         // It could be that the ref was already reused when rendering another element.
-        // Only unset the ref it still belongs to our node
-        if self.node_ref.get().as_ref() == Some(&node) {
-            self.node_ref.set(None);
+        // Only unset the ref if it still belongs to our node.
+        if node_ref.get().map(|e| e.id()) == Some(node_id) {
+            node_ref.set(None);
         }
     }
 
-    fn shift(&self, next_parent: &Element, slot: DomSlot) -> DomSlot {
-        slot.insert(next_parent, &self.reference);
-
-        DomSlot::at(self.reference.clone().into())
+    fn shift(&self, next_parent: &Rc<Element>, slot: DomSlot) -> DomSlot {
+        let el_id = self.reference.id();
+        slot.insert(next_parent, el_id);
+        DomSlot::at(el_id)
     }
 }
 
@@ -110,48 +129,51 @@ impl Reconcilable for VTag {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: &Element,
+        parent: &Rc<Element>,
         slot: DomSlot,
     ) -> (DomSlot, Self::Bundle) {
-        let el = self.create_element(parent);
+        let reference = self.create_element(parent);
+        let el_id = reference.id();
         let Self {
             listeners,
             attributes,
             node_ref,
             key,
+            inner: self_inner,
             ..
         } = self;
 
-        // Apply attributes BEFORE inserting the element into the DOM
+        // Apply attributes BEFORE inserting the element into the DOM.
         // This is crucial for SVG animation elements where the animation
-        // starts immediately upon DOM insertion
-        let attributes = attributes.apply(root, &el);
-        let listeners = listeners.apply(root, &el);
+        // starts immediately upon DOM insertion.
+        let attributes = attributes.apply(root, &reference);
+        let listeners = listeners.apply(root, &reference);
 
-        // Now insert the element with attributes already set
-        slot.insert(parent, &el);
+        // Now insert the element with attributes already set.
+        slot.insert(parent, el_id);
 
-        let inner = match self.inner {
+        let inner = match self_inner {
             VTagInner::Input(f) => {
-                let f = f.apply(root, el.unchecked_ref());
+                let f = f.apply(root, &reference);
                 BTagInner::Input(f)
             }
             VTagInner::Textarea(f) => {
-                let value = f.apply(root, el.unchecked_ref());
+                let value = f.apply(root, &reference);
                 BTagInner::Textarea { value }
             }
             VTagInner::Other { children, tag } => {
-                let (_, child_bundle) = children.attach(root, parent_scope, &el, DomSlot::at_end());
+                let (_, child_bundle) =
+                    children.attach(root, parent_scope, &reference, DomSlot::at_end());
                 BTagInner::Other { child_bundle, tag }
             }
         };
-        node_ref.set(Some(el.clone().into()));
+        node_ref.set(Some(Rc::clone(&reference)));
         (
-            DomSlot::at(el.clone().into()),
+            DomSlot::at(el_id),
             BTag {
                 inner,
                 listeners,
-                reference: el,
+                reference,
                 attributes,
                 key,
                 node_ref,
@@ -163,7 +185,7 @@ impl Reconcilable for VTag {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: &Element,
+        parent: &Rc<Element>,
         slot: DomSlot,
         bundle: &mut BNode,
     ) -> DomSlot {
@@ -197,23 +219,25 @@ impl Reconcilable for VTag {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        _parent: &Element,
+        _parent: &Rc<Element>,
         _slot: DomSlot,
         tag: &mut Self::Bundle,
     ) -> DomSlot {
-        let el = &tag.reference;
-        self.attributes.apply_diff(root, el, &mut tag.attributes);
-        self.listeners.apply_diff(root, el, &mut tag.listeners);
+        let el_id = tag.reference.id();
+        self.attributes
+            .apply_diff(root, &tag.reference, &mut tag.attributes);
+        self.listeners
+            .apply_diff(root, &tag.reference, &mut tag.listeners);
 
         match (self.inner, &mut tag.inner) {
             (VTagInner::Input(new), BTagInner::Input(old)) => {
-                new.apply_diff(root, el.unchecked_ref(), old);
+                new.apply_diff(root, &tag.reference, old);
             }
             (
                 VTagInner::Textarea(TextareaFields { value: new, .. }),
                 BTagInner::Textarea { value: old },
             ) => {
-                new.apply_diff(root, el.unchecked_ref(), old);
+                new.apply_diff(root, &tag.reference, old);
             }
             (
                 VTagInner::Other { children: new, .. },
@@ -221,7 +245,7 @@ impl Reconcilable for VTag {
                     child_bundle: old, ..
                 },
             ) => {
-                new.reconcile(root, parent_scope, el, DomSlot::at_end(), old);
+                new.reconcile(root, parent_scope, &tag.reference, DomSlot::at_end(), old);
             }
             // Can not happen, because we checked for tag equability above
             _ => unsafe { unreachable_unchecked() },
@@ -229,73 +253,53 @@ impl Reconcilable for VTag {
 
         tag.key = self.key;
 
-        if self.node_ref != tag.node_ref && tag.node_ref.get().as_ref() == Some(el) {
+        if self.node_ref != tag.node_ref && tag.node_ref.get().map(|e| e.id()) == Some(el_id) {
             tag.node_ref.set(None);
         }
         if self.node_ref != tag.node_ref {
             tag.node_ref = self.node_ref;
-            tag.node_ref.set(Some(el.clone().into()));
+            tag.node_ref.set(Some(Rc::clone(&tag.reference)));
         }
 
-        DomSlot::at(el.clone().into())
+        DomSlot::at(el_id)
     }
 }
 
 impl VTag {
-    fn create_element(&self, parent: &Element) -> Element {
+    /// Create the host-side DOM element, choosing the SVG/MathML/HTML
+    /// namespace based on the tag name, the parent's namespace, and an
+    /// optional `xmlns` attribute. Returns an `Rc` so the new element can
+    /// be both stored in the [BTag] and passed to children as a parent.
+    fn create_element(&self, parent: &Element) -> Rc<Element> {
         let tag = self.tag();
-        // check for an xmlns attribute. If it exists, create an element with the specified
-        // namespace
-        if let Some(xmlns) = self
+        let element = if let Some(xmlns) = self
             .attributes
             .iter()
             .find(|(k, _)| *k == "xmlns")
             .map(|(_, v)| v)
         {
-            document()
-                .create_element_ns(Some(xmlns), tag)
-                .expect("can't create namespaced element for vtag")
-        } else if tag == "svg" || parent.namespace_uri().is_some_and(|ns| ns == SVG_NAMESPACE) {
-            let namespace = Some(SVG_NAMESPACE);
-            document()
-                .create_element_ns(namespace, tag)
-                .expect("can't create namespaced element for vtag")
-        } else if tag == "math"
-            || parent
-                .namespace_uri()
-                .is_some_and(|ns| ns == MATHML_NAMESPACE)
-        {
-            let namespace = Some(MATHML_NAMESPACE);
-            document()
-                .create_element_ns(namespace, tag)
+            Element::new_ns(xmlns, tag).expect("can't create namespaced element for vtag")
+        } else if tag == "svg" || parent_namespace_is(parent, SVG_NAMESPACE) {
+            Element::new_ns(SVG_NAMESPACE, tag).expect("can't create namespaced element for vtag")
+        } else if tag == "math" || parent_namespace_is(parent, MATHML_NAMESPACE) {
+            Element::new_ns(MATHML_NAMESPACE, tag)
                 .expect("can't create namespaced element for vtag")
         } else {
-            thread_local! {
-                static CACHED_ELEMENTS: RefCell<HashMap<String, Element>> = RefCell::new(HashMap::with_capacity(32));
-            }
+            Element::new(tag).expect("can't create element for vtag")
+        };
+        Rc::new(element)
+    }
+}
 
-            CACHED_ELEMENTS.with(|cache| {
-                let mut cache = cache.borrow_mut();
-                let cached = cache.get(tag).map(|el| {
-                    el.clone_node()
-                        .expect("couldn't clone cached element")
-                        .unchecked_into::<Element>()
-                });
-                cached.unwrap_or_else(|| {
-                    let to_be_cached = document()
-                        .create_element(tag)
-                        .expect("can't create element for vtag");
-                    cache.insert(
-                        tag.to_string(),
-                        to_be_cached
-                            .clone_node()
-                            .expect("couldn't clone node to be cached")
-                            .unchecked_into(),
-                    );
-                    to_be_cached
-                })
-            })
-        }
+fn parent_namespace_is(parent: &Element, expected: &str) -> bool {
+    // Reasonably-sized local buffer covering every known HTML / SVG / MathML
+    // namespace URI. The host returns the required length; if it exceeds the
+    // buffer we conservatively assume "not a match" (namespace detection
+    // never invents SVG context where there isn't one).
+    let mut buf = [0u8; 128];
+    match rust_wasm_binding::get_namespace_uri(parent.id(), &mut buf) {
+        Ok(Some(len)) if len <= buf.len() => &buf[..len] == expected.as_bytes(),
+        _ => false,
     }
 }
 
@@ -304,7 +308,6 @@ impl BTag {
     pub fn key(&self) -> Option<&Key> {
         self.key.as_ref()
     }
-
 }
 #[cfg(test)]
 mod tests_without_browser {

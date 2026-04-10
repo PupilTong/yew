@@ -299,8 +299,12 @@ impl ToTokens for HtmlElement {
                     };
                     let v = match directive {
                         Some(PropDirective::ApplyAsProperty(token)) => {
-                            quote_spanned!(token.span()=> ::yew::virtual_dom::AttributeOrProperty::Property(
-                                ::std::convert::Into::into(#v)
+                            // Paws fork: no host-side set_property yet, so
+                            // route through set_attribute on the stringified
+                            // form. The `~prop_name = …` syntax is still
+                            // accepted for source-level parity with upstream.
+                            quote_spanned!(token.span()=> ::yew::virtual_dom::AttributeOrProperty::Attribute(
+                                ::yew::virtual_dom::AttrValue::from(::std::string::ToString::to_string(&(#v)))
                             ))
                         }
                         None => quote!(::yew::virtual_dom::AttributeOrProperty::Static(
@@ -322,9 +326,12 @@ impl ToTokens for HtmlElement {
                 let values = attrs.iter().map(|(_, v, directive)| {
                     let value = match directive {
                         Some(PropDirective::ApplyAsProperty(token)) => {
+                            // Paws fork: collapsed into Attribute, see above.
                             quote_spanned!(token.span()=> ::std::option::Option::Some(
-                                ::yew::virtual_dom::AttributeOrProperty::Property(
-                                    ::std::convert::Into::into(#v)
+                                ::yew::virtual_dom::AttributeOrProperty::Attribute(
+                                    ::yew::virtual_dom::AttrValue::from(
+                                        ::std::string::ToString::to_string(&(#v))
+                                    )
                                 ))
                             )
                         }

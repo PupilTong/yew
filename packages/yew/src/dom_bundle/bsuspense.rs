@@ -1,7 +1,8 @@
 //! This module contains the bundle version of a suspense [BSuspense]
 
-use gloo::utils::document;
-use web_sys::Element;
+use std::rc::Rc;
+
+use rust_wasm_binding::Element;
 
 use super::{BNode, BSubtree, DomSlot, Reconcilable, ReconcileTarget};
 use crate::html::AnyScope;
@@ -19,7 +20,14 @@ pub(super) struct BSuspense {
     children_bundle: BNode,
     /// The suspense is suspended if fallback contains [Some] bundle
     fallback: Option<Fallback>,
-    detached_parent: Element,
+    /// Off-tree scratch element suspended children are shifted into.
+    ///
+    /// Wrapped in `Rc<Element>` so the children's `attach` /
+    /// `reconcile_node` calls can pass `&detached_parent` where the trait
+    /// signature wants `&Rc<Element>`. The last drop of the `Rc` releases
+    /// the host-side slab slot, so a suspense that never reaches `detach`
+    /// still cleans up.
+    detached_parent: Rc<Element>,
     key: Option<Key>,
 }
 
@@ -31,22 +39,34 @@ impl BSuspense {
 }
 
 impl ReconcileTarget for BSuspense {
-    fn detach(self, root: &BSubtree, parent: &Element, parent_to_detach: bool) {
-        match self.fallback {
+    fn detach(self, root: &BSubtree, parent: &Rc<Element>, parent_to_detach: bool) {
+        let Self {
+            children_bundle,
+            fallback,
+            detached_parent,
+            key: _,
+        } = self;
+
+        match fallback {
             Some(m) => {
                 let Fallback::Bundle(bundle) = m;
                 bundle.detach(root, parent, parent_to_detach);
 
-                self.children_bundle
-                    .detach(root, &self.detached_parent, false);
+                // Children live under the detached scratch parent (never
+                // attached to the main DOM tree), so they're detached with
+                // `parent_to_detach: true` — the scratch parent is about
+                // to be destroyed by its own Drop anyway.
+                children_bundle.detach(root, &detached_parent, true);
             }
             None => {
-                self.children_bundle.detach(root, parent, parent_to_detach);
+                children_bundle.detach(root, parent, parent_to_detach);
             }
         }
+        // `detached_parent` drops here, calling destroy_element on the
+        // scratch slab entry.
     }
 
-    fn shift(&self, next_parent: &Element, slot: DomSlot) -> DomSlot {
+    fn shift(&self, next_parent: &Rc<Element>, slot: DomSlot) -> DomSlot {
         match self.fallback.as_ref() {
             Some(Fallback::Bundle(bundle)) => bundle.shift(next_parent, slot),
             None => self.children_bundle.shift(next_parent, slot),
@@ -61,7 +81,7 @@ impl Reconcilable for VSuspense {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: &Element,
+        parent: &Rc<Element>,
         slot: DomSlot,
     ) -> (DomSlot, Self::Bundle) {
         let VSuspense {
@@ -70,9 +90,8 @@ impl Reconcilable for VSuspense {
             suspended,
             key,
         } = self;
-        let detached_parent = document()
-            .create_element("div")
-            .expect("failed to create detached element");
+        let detached_parent =
+            Rc::new(Element::new("div").expect("failed to create detached element"));
 
         // When it's suspended, we render children into an element that is detached from the dom
         // tree while rendering fallback UI into the original place where children resides in.
@@ -107,7 +126,7 @@ impl Reconcilable for VSuspense {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: &Element,
+        parent: &Rc<Element>,
         slot: DomSlot,
         bundle: &mut BNode,
     ) -> DomSlot {
@@ -124,7 +143,7 @@ impl Reconcilable for VSuspense {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: &Element,
+        parent: &Rc<Element>,
         slot: DomSlot,
         suspense: &mut Self::Bundle,
     ) -> DomSlot {
@@ -193,4 +212,3 @@ impl Reconcilable for VSuspense {
         }
     }
 }
-

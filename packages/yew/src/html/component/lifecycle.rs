@@ -4,7 +4,7 @@ use std::any::Any;
 use std::rc::Rc;
 
 #[cfg(feature = "csr")]
-use web_sys::Element;
+use rust_wasm_binding::Element;
 
 use super::scope::{AnyScope, Scope};
 use super::BaseComponent;
@@ -20,7 +20,13 @@ pub(crate) enum ComponentRenderState {
     Render {
         bundle: Bundle,
         root: BSubtree,
-        parent: Element,
+        /// Shared handle to the parent element this component is mounted
+        /// under. Held as `Rc<Element>` so the component can outlive the
+        /// trait method scope and so the parent's enclosing
+        /// [BTag](crate::dom_bundle::BTag) (or
+        /// [AppHandle](crate::AppHandle)) can keep its own clone of the
+        /// `Rc` in parallel.
+        parent: Rc<Element>,
         /// The dom position in front of the next sibling.
         /// Gets updated when the bundle in which this component occurs gets re-rendered and is
         /// shared with the children of this component.
@@ -56,7 +62,7 @@ impl std::fmt::Debug for ComponentRenderState {
 
 #[cfg(feature = "csr")]
 impl ComponentRenderState {
-    pub(crate) fn shift(&mut self, next_parent: Element, next_slot: DomSlot) {
+    pub(crate) fn shift(&mut self, next_parent: Rc<Element>, next_slot: DomSlot) {
         match self {
             #[cfg(feature = "csr")]
             Self::Render {
@@ -179,10 +185,7 @@ impl ComponentState {
     ) -> Self {
         let comp_id = scope.id;
 
-        let context = Context {
-            scope,
-            props,
-        };
+        let context = Context { scope, props };
 
         let inner = Box::new(CompStateInner {
             component: COMP::create(&context),

@@ -428,7 +428,7 @@ pub(crate) use feat_csr_ssr::*;
 mod feat_csr {
     use std::cell::Ref;
 
-    use web_sys::Element;
+    use rust_wasm_binding::Element;
 
     use super::*;
     use crate::dom_bundle::{BSubtree, Bundle, DomSlot, DynamicDomSlot};
@@ -466,11 +466,17 @@ mod feat_csr {
     where
         COMP: BaseComponent,
     {
-        /// Mounts a component with `props` to the specified `element` in the DOM.
+        /// Mounts a component with `props` to the specified `parent` element in the DOM.
+        ///
+        /// `parent` is taken as `Rc<Element>` because the component scope
+        /// stores it long-term in [`ComponentRenderState`] across re-renders;
+        /// the caller's owner of the parent (the enclosing BTag, the
+        /// AppHandle's mount root, etc.) keeps its own clone of the `Rc`
+        /// alive in parallel.
         pub(crate) fn mount_in_place(
             &self,
             root: BSubtree,
-            parent: Element,
+            parent: Rc<Element>,
             slot: DomSlot,
             props: Rc<COMP::Properties>,
         ) -> DynamicDomSlot {
@@ -513,7 +519,7 @@ mod feat_csr {
         /// Get the render state if it hasn't already been destroyed
         fn render_state(&self) -> Option<Ref<'_, ComponentRenderState>>;
         /// Shift the node associated with this scope to a new place
-        fn shift_node(&self, parent: Element, slot: DomSlot);
+        fn shift_node(&self, parent: &Rc<Element>, slot: DomSlot);
         /// Process an event to destroy a component
         fn destroy(self, parent_to_detach: bool);
         fn destroy_boxed(self: Box<Self>, parent_to_detach: bool);
@@ -549,10 +555,10 @@ mod feat_csr {
             self.destroy(parent_to_detach)
         }
 
-        fn shift_node(&self, parent: Element, slot: DomSlot) {
+        fn shift_node(&self, parent: &Rc<Element>, slot: DomSlot) {
             let mut state_ref = self.state.borrow_mut();
             if let Some(render_state) = state_ref.as_mut() {
-                render_state.render_state.shift(parent, slot)
+                render_state.render_state.shift(parent.clone(), slot)
             }
         }
     }

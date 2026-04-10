@@ -1,22 +1,37 @@
 //! This module contains the implementation of a portal `VPortal`.
 
-use web_sys::{Element, Node};
+use std::rc::Rc;
+
+use rust_wasm_binding::Element;
 
 use super::VNode;
 
-#[derive(Debug, Clone, PartialEq)]
+/// Portal target. Wrapped in [`Rc`] so the user code can keep its own clone
+/// of the host element alive while yew renders into it.
+pub type PortalHost = Rc<Element>;
+
+#[derive(Debug, Clone)]
 pub struct VPortal {
     /// The element under which the content is inserted.
-    pub host: Element,
-    /// The next sibling after the inserted content. Must be a child of `host`.
-    pub inner_sibling: Option<Node>,
+    pub host: PortalHost,
+    /// The next sibling after the inserted content (Paws node id). Must be a
+    /// child of `host` if set.
+    pub inner_sibling: Option<i32>,
     /// The inserted node
     pub node: VNode,
 }
 
+impl PartialEq for VPortal {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.host, &other.host)
+            && self.inner_sibling == other.inner_sibling
+            && self.node == other.node
+    }
+}
+
 impl VPortal {
     /// Creates a [VPortal] rendering `content` in the DOM hierarchy under `host`.
-    pub fn new(content: VNode, host: Element) -> Self {
+    pub fn new(content: VNode, host: PortalHost) -> Self {
         Self {
             host,
             inner_sibling: None,
@@ -25,9 +40,9 @@ impl VPortal {
     }
 
     /// Creates a [VPortal] rendering `content` in the DOM hierarchy under `host`.
-    /// If `inner_sibling` is given, the content is inserted before that [Node].
+    /// If `inner_sibling` is given, the content is inserted before that node.
     /// The parent of `inner_sibling`, if given, must be `host`.
-    pub fn new_before(content: VNode, host: Element, inner_sibling: Option<Node>) -> Self {
+    pub fn new_before(content: VNode, host: PortalHost, inner_sibling: Option<i32>) -> Self {
         Self {
             host,
             inner_sibling,

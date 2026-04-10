@@ -91,16 +91,6 @@ impl<IN, OUT: ImplicitClone + 'static> IntoIterator for NodeSeq<IN, OUT> {
 #[doc(hidden)]
 pub fn __ensure_type<T>(_: T) {}
 
-/// Print the [web_sys::Node]'s contents as a string for debugging purposes
-pub fn print_node(n: &web_sys::Node) -> String {
-    use wasm_bindgen::JsCast;
-
-    match n.dyn_ref::<web_sys::Element>() {
-        Some(el) => el.outer_html(),
-        None => n.text_content().unwrap_or_default(),
-    }
-}
-
 // NOTE: replace this by Rc::unwrap_or_clone() when it becomes stable
 pub(crate) trait RcExt<T: Clone> {
     fn unwrap_or_clone(this: Self) -> T;

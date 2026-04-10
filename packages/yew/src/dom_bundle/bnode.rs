@@ -1,8 +1,9 @@
 //! This module contains the bundle version of an abstract node [BNode]
 
 use std::fmt;
+use std::rc::Rc;
 
-use web_sys::{Element, Node};
+use rust_wasm_binding::{Element, NodeOps};
 
 use super::{BComp, BList, BPortal, BSubtree, BSuspense, BTag, BText, DomSlot};
 use crate::dom_bundle::{Reconcilable, ReconcileTarget};
@@ -12,18 +13,21 @@ use crate::virtual_dom::{Key, VNode};
 
 /// The bundle implementation to [VNode].
 pub(super) enum BNode {
-    /// A bind between `VTag` and `Element`.
+    /// A bind between `VTag` and an element node id.
     Tag(Box<BTag>),
-    /// A bind between `VText` and `TextNode`.
+    /// A bind between `VText` and a text node id.
     Text(BText),
-    /// A bind between `VComp` and `Element`.
+    /// A bind between `VComp` and an element node id.
     Comp(BComp),
     /// A holder for a list of other nodes.
     List(BList),
     /// A portal to another part of the document
     Portal(BPortal),
-    /// A holder for any `Node` (necessary for replacing node).
-    Ref(Node),
+    /// A holder for a raw, user-supplied DOM element node. The wrapper is
+    /// shared via `Rc` so the bundle does not own the underlying slab id —
+    /// the user code that constructed the [`VNode::VRef`] keeps its own
+    /// clone.
+    Ref(Rc<Element>),
     /// A suspendible document fragment.
     Suspense(Box<BSuspense>),
 }
@@ -45,15 +49,17 @@ impl BNode {
 
 impl ReconcileTarget for BNode {
     /// Remove VNode from parent.
-    fn detach(self, root: &BSubtree, parent: &Element, parent_to_detach: bool) {
+    fn detach(self, root: &BSubtree, parent: &Rc<Element>, parent_to_detach: bool) {
         match self {
             Self::Tag(vtag) => vtag.detach(root, parent, parent_to_detach),
             Self::Text(btext) => btext.detach(root, parent, parent_to_detach),
             Self::Comp(bsusp) => bsusp.detach(root, parent, parent_to_detach),
             Self::List(blist) => blist.detach(root, parent, parent_to_detach),
-            Self::Ref(ref node) => {
-                // Always remove user-defined nodes to clear possible parent references of them
-                if parent.remove_child(node).is_err() {
+            Self::Ref(node) => {
+                // Always remove user-defined nodes to clear possible parent references of them.
+                // The `Rc<Element>` is *not* dropped here — the user code that constructed
+                // the [`VNode::VRef`] still holds its own clone of the handle.
+                if rust_wasm_binding::remove_child(parent.id(), node.id()).is_err() {
                     tracing::warn!("Node not found to remove VRef");
                 }
             }
@@ -62,16 +68,16 @@ impl ReconcileTarget for BNode {
         }
     }
 
-    fn shift(&self, next_parent: &Element, slot: DomSlot) -> DomSlot {
+    fn shift(&self, next_parent: &Rc<Element>, slot: DomSlot) -> DomSlot {
         match self {
             Self::Tag(ref vtag) => vtag.shift(next_parent, slot),
             Self::Text(ref btext) => btext.shift(next_parent, slot),
             Self::Comp(ref bsusp) => bsusp.shift(next_parent, slot),
             Self::List(ref vlist) => vlist.shift(next_parent, slot),
-            Self::Ref(ref node) => {
-                slot.insert(next_parent, node);
-
-                DomSlot::at(node.clone())
+            Self::Ref(node) => {
+                let id = node.id();
+                slot.insert(next_parent, id);
+                DomSlot::at(id)
             }
             Self::Portal(ref vportal) => vportal.shift(next_parent, slot),
             Self::Suspense(ref vsuspense) => vsuspense.shift(next_parent, slot),
@@ -86,7 +92,7 @@ impl Reconcilable for VNode {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: &Element,
+        parent: &Rc<Element>,
         slot: DomSlot,
     ) -> (DomSlot, Self::Bundle) {
         match self {
@@ -110,8 +116,9 @@ impl Reconcilable for VNode {
                 (node_ref, list.into())
             }
             VNode::VRef(node) => {
-                slot.insert(parent, &node);
-                (DomSlot::at(node.clone()), BNode::Ref(node))
+                let id = node.id();
+                slot.insert(parent, id);
+                (DomSlot::at(id), BNode::Ref(node))
             }
             VNode::VPortal(vportal) => {
                 let (node_ref, portal) =
@@ -130,7 +137,7 @@ impl Reconcilable for VNode {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: &Element,
+        parent: &Rc<Element>,
         slot: DomSlot,
         bundle: &mut BNode,
     ) -> DomSlot {
@@ -141,7 +148,7 @@ impl Reconcilable for VNode {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: &Element,
+        parent: &Rc<Element>,
         slot: DomSlot,
         bundle: &mut BNode,
     ) -> DomSlot {
@@ -169,7 +176,13 @@ impl Reconcilable for VNode {
                 bundle,
             ),
             VNode::VRef(node) => match bundle {
-                BNode::Ref(ref n) if &node == n => DomSlot::at(node),
+                // Compare by slab id (identity). Two distinct `Rc<Element>`s
+                // pointing at the same id should be treated as the same node.
+                BNode::Ref(existing)
+                    if Rc::ptr_eq(&node, existing) || node.id() == existing.id() =>
+                {
+                    DomSlot::at(node.id())
+                }
                 _ => VNode::VRef(node).replace(root, parent_scope, parent, slot, bundle),
             },
             VNode::VPortal(vportal) => RcExt::unwrap_or_clone(vportal).reconcile_node(
@@ -239,7 +252,7 @@ impl fmt::Debug for BNode {
             Self::Text(ref btext) => btext.fmt(f),
             Self::Comp(ref bsusp) => bsusp.fmt(f),
             Self::List(ref vlist) => vlist.fmt(f),
-            Self::Ref(ref vref) => write!(f, "VRef ( \"{}\" )", crate::utils::print_node(vref)),
+            Self::Ref(ref vref) => write!(f, "VRef({})", vref.id()),
             Self::Portal(ref vportal) => vportal.fmt(f),
             Self::Suspense(ref bsusp) => bsusp.fmt(f),
         }

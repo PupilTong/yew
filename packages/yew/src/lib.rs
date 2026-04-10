@@ -278,24 +278,24 @@ pub mod suspense;
 pub mod utils;
 pub mod virtual_dom;
 
-
 #[cfg(feature = "csr")]
 mod app_handle;
 #[cfg(feature = "csr")]
 mod renderer;
 
 /// The module that contains all events available in the framework.
+///
+/// In the Paws fork the event payload is the unit type `()` — there is no
+/// JS engine, so `web_sys::MouseEvent` / `KeyboardEvent` / etc. do not exist.
+/// Closures that need to query event state should call the
+/// `rust_wasm_binding::event_*` helpers during dispatch (they read the
+/// currently-dispatching event from the host).
 pub mod events {
-    #[doc(no_inline)]
-    pub use web_sys::{
-        AnimationEvent, DragEvent, ErrorEvent, Event, FocusEvent, InputEvent, KeyboardEvent,
-        MouseEvent, PointerEvent, ProgressEvent, SubmitEvent, TouchEvent, TransitionEvent, UiEvent,
-        WheelEvent,
-    };
+    /// All event payloads share this type.
+    pub type Event = ();
 
     #[cfg(feature = "csr")]
     pub use crate::dom_bundle::set_event_bubbling;
-    pub use crate::html::TargetCast;
 }
 
 #[cfg(feature = "csr")]
@@ -319,9 +319,11 @@ pub mod prelude {
     pub use crate::context::{ContextHandle, ContextProvider};
     pub use crate::events::*;
     pub use crate::functional::*;
+    #[cfg(feature = "csr")]
+    pub use crate::html::create_portal;
     pub use crate::html::{
-        create_portal, BaseComponent, Children, ChildrenWithProps, Classes, Component, Context,
-        Html, HtmlResult, NodeRef, Properties,
+        BaseComponent, Children, ChildrenWithProps, Classes, Component, Context, Html, HtmlResult,
+        NodeRef, Properties,
     };
     pub use crate::macros::{classes, html, html_nested};
     pub use crate::suspense::Suspense;
