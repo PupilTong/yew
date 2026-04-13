@@ -3,6 +3,7 @@ members = [
     "packages/yew",
     "packages/yew-macro",
     "examples/example-yew-counter",
+    "examples/example-yew-list",
 ]
 exclude = ["examples/.cargo"]
 default-members = [
