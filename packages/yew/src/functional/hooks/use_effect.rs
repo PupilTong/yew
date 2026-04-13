@@ -140,11 +140,11 @@ where
 ///
 ///     let counter_one = counter.clone();
 ///     use_effect(move || {
-///         // Make a call to DOM API after component is rendered
-///         gloo::utils::document().set_title(&format!("You clicked {} times", *counter_one));
+///         // Run a side effect after component is rendered
+///         tracing::info!("You clicked {} times", *counter_one);
 ///
 ///         // Perform the cleanup
-///         || gloo::utils::document().set_title(&format!("You clicked 0 times"))
+///         || tracing::info!("Cleanup: resetting click count")
 ///     });
 ///
 ///     let onclick = {
@@ -187,7 +187,6 @@ where
 ///
 /// ```rust
 /// use yew::{component, html, use_effect_with, Html, Properties};
-/// # use gloo::console::log;
 ///
 /// #[derive(Properties, PartialEq)]
 /// pub struct Props {
@@ -199,7 +198,7 @@ where
 ///     let is_loading = props.is_loading.clone();
 ///
 ///     use_effect_with(is_loading, move |_| {
-///         log!(" Is loading prop changed!");
+///         tracing::info!("Is loading prop changed!");
 ///     });
 ///
 ///     html! {
@@ -217,12 +216,11 @@ where
 ///
 /// ```rust
 /// use yew::{component, html, use_effect_with, Html};
-/// # use gloo::console::log;
 ///
 /// #[component]
 /// fn HelloWorld() -> Html {
 ///     use_effect_with((), move |_| {
-///         log!("I got rendered, yay!");
+///         tracing::info!("I got rendered, yay!");
 ///     });
 ///
 ///     html! { "Hello" }
@@ -236,13 +234,12 @@ where
 ///
 /// ```rust
 /// use yew::{component, html, use_effect_with, Html};
-/// # use gloo::console::log;
 ///
 /// #[component]
 /// fn HelloWorld() -> Html {
 ///     use_effect_with((), move |_| {
 ///         || {
-///             log!("Nooo dont kill me, ahhh!");
+///             tracing::info!("Nooo dont kill me, ahhh!");
 ///         }
 ///     });
 ///

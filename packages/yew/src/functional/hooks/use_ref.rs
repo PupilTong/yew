@@ -31,7 +31,6 @@ impl<T: 'static, F: FnOnce() -> T> Hook for UseRef<F> {
 /// use std::ops::{Deref, DerefMut};
 /// use std::rc::Rc;
 ///
-/// use web_sys::HtmlInputElement;
 /// use yew::prelude::*;
 ///
 /// #[component(UseRef)]
@@ -39,28 +38,18 @@ impl<T: 'static, F: FnOnce() -> T> Hook for UseRef<F> {
 ///     let message = use_state(|| "".to_string());
 ///     let message_count = use_ref(|| Cell::new(0));
 ///
-///     let onclick = Callback::from(move |e| {
-///         let window = gloo::utils::window();
-///
+///     let onclick = Callback::from(move |_| {
 ///         if message_count.get() > 3 {
-///             window.alert_with_message("Message limit reached");
+///             tracing::warn!("Message limit reached");
 ///         } else {
 ///             message_count.set(message_count.get() + 1);
-///             window.alert_with_message("Message sent");
+///             tracing::info!("Message sent");
 ///         }
 ///     });
 ///
-///     let onchange = {
-///         let message = message.clone();
-///         Callback::from(move |e: Event| {
-///             let input: HtmlInputElement = e.target_unchecked_into();
-///             message.set(input.value())
-///         })
-///     };
-///
 ///     html! {
 ///         <div>
-///             <input {onchange} value={(*message).clone()} />
+///             <input value={(*message).clone()} />
 ///             <button {onclick}>{ "Send" }</button>
 ///         </div>
 ///     }
@@ -85,7 +74,6 @@ where
 /// use std::ops::{Deref, DerefMut};
 /// use std::rc::Rc;
 ///
-/// use web_sys::HtmlInputElement;
 /// use yew::prelude::*;
 ///
 /// #[component(UseRef)]
@@ -93,28 +81,18 @@ where
 ///     let message = use_state(|| "".to_string());
 ///     let message_count = use_mut_ref(|| 0);
 ///
-///     let onclick = Callback::from(move |e| {
-///         let window = gloo::utils::window();
-///
+///     let onclick = Callback::from(move |_| {
 ///         if *message_count.borrow_mut() > 3 {
-///             window.alert_with_message("Message limit reached");
+///             tracing::warn!("Message limit reached");
 ///         } else {
 ///             *message_count.borrow_mut() += 1;
-///             window.alert_with_message("Message sent");
+///             tracing::info!("Message sent");
 ///         }
 ///     });
 ///
-///     let onchange = {
-///         let message = message.clone();
-///         Callback::from(move |e: Event| {
-///             let input: HtmlInputElement = e.target_unchecked_into();
-///             message.set(input.value())
-///         })
-///     };
-///
 ///     html! {
 ///         <div>
-///             <input {onchange} value={(*message).clone()} />
+///             <input value={(*message).clone()} />
 ///             <button {onclick}>{ "Send" }</button>
 ///         </div>
 ///     }
@@ -138,43 +116,24 @@ where
 /// # Example
 ///
 /// ```rust
-/// use wasm_bindgen::prelude::Closure;
-/// use wasm_bindgen::JsCast;
-/// use web_sys::{Event, HtmlElement};
-/// use yew::{component, html, use_effect_with, use_node_ref, Html};
+/// use yew::{component, html, use_effect_with, use_node_ref, Html, Callback};
 ///
 /// #[component(UseNodeRef)]
 /// pub fn node_ref_hook() -> Html {
 ///     let div_ref = use_node_ref();
 ///
-///     {
-///         let div_ref = div_ref.clone();
+///     // In Paws, event listeners are attached declaratively via the html! macro
+///     // rather than through imperative DOM APIs. Use `onclick`, `oninput`, etc.
+///     // attributes directly on elements. The NodeRef is still useful for reading
+///     // element state after render via use_effect_with.
 ///
-///         use_effect_with(div_ref, |div_ref| {
-///             let div = div_ref
-///                 .cast::<HtmlElement>()
-///                 .expect("div_ref not attached to div element");
-///
-///             let listener = Closure::<dyn Fn(Event)>::wrap(Box::new(|_| {
-///                 web_sys::console::log_1(&"Clicked!".into());
-///             }));
-///
-///             div.add_event_listener_with_callback("click", listener.as_ref().unchecked_ref())
-///                 .unwrap();
-///
-///             move || {
-///                 div.remove_event_listener_with_callback(
-///                     "click",
-///                     listener.as_ref().unchecked_ref(),
-///                 )
-///                 .unwrap();
-///             }
-///         });
-///     }
+///     let onclick = Callback::from(|_| {
+///         tracing::info!("Clicked!");
+///     });
 ///
 ///     html! {
-///         <div ref={div_ref}>
-///             { "Click me and watch the console log!" }
+///         <div ref={div_ref} {onclick}>
+///             { "Click me and watch the log!" }
 ///         </div>
 ///     }
 /// }

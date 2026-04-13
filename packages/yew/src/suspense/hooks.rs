@@ -52,22 +52,22 @@ impl<T: fmt::Debug> fmt::Debug for UseFutureHandle<T> {
 /// ```
 /// # use yew::prelude::*;
 /// # use yew::suspense::use_future;
-/// use gloo::net::http::Request;
 ///
-/// const URL: &str = "https://en.wikipedia.org/w/api.php?\
-///                    action=query&origin=*&format=json&generator=search&\
-///                    gsrnamespace=0&gsrlimit=5&gsrsearch='New_England_Patriots'";
+/// async fn fetch_data() -> Result<String, String> {
+///     // Replace with your actual async data-fetching logic
+///     Ok("Example search result".to_string())
+/// }
 ///
 /// #[component]
-/// fn WikipediaSearch() -> HtmlResult {
-///     let res = use_future(|| async { Request::get(URL).send().await?.text().await })?;
+/// fn SearchResults() -> HtmlResult {
+///     let res = use_future(|| async { fetch_data().await })?;
 ///     let result_html = match *res {
 ///         Ok(ref res) => html! { res },
 ///         Err(ref failure) => failure.to_string().into(),
 ///     };
 ///     Ok(html! {
 ///         <p>
-///             {"Wikipedia search result: "}
+///             {"Search result: "}
 ///             {result_html}
 ///         </p>
 ///     })
