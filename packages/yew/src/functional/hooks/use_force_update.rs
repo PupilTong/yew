@@ -84,7 +84,7 @@ mod feat_nightly {
 /// fn ManuallyUpdatedDate() -> Html {
 ///     let trigger = use_force_update();
 ///     let onclick = use_state(move || Callback::from(move |_| trigger.force_update()));
-///     let last_update = js_sys::Date::new_0().to_utc_string();
+///     let last_update = "last update timestamp";
 ///     html! {
 ///         <div>
 ///             <button onclick={&*onclick}>{"Update now!"}</button>
