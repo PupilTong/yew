@@ -7,6 +7,7 @@ use rust_wasm_binding::{Element, NodeOps};
 
 /// Sentinel node id used by the trap check in debug builds. Real Paws node
 /// ids are always `>= 0`, so `i32::MIN` is guaranteed not to collide.
+#[cfg(debug_assertions)]
 const TRAP_SENTINEL: i32 = i32::MIN;
 
 /// A position in the list of children of an implicit parent element.
