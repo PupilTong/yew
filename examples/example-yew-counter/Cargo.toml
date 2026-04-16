@@ -9,3 +9,6 @@ crate-type = ["cdylib"]
 [dependencies]
 rust-wasm-binding = { path = "../../../rust-wasm-binding", default-features = false }
 yew = { path = "../../packages/yew", features = ["csr"] }
+
+[features]
+coverage = ["rust-wasm-binding/coverage"]

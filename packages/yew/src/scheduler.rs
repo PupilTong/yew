@@ -223,6 +223,18 @@ pub(crate) fn start_now() {
             scheduler_loop();
             #[cfg(any(test, feature = "test"))]
             flush_wakers::wake_all();
+            // Paws fork: after the scheduler drains all pending render /
+            // DOM-mutation work, trigger a commit so style + layout run
+            // automatically on each cycle (initial mount and subsequent
+            // re-renders alike). The commit is a no-op if the host hasn't
+            // wired `__commit` to anything.
+            //
+            // Only done on WASM targets — host-side unit tests exercise
+            // the scheduler without a linked `__commit` symbol.
+            #[cfg(target_arch = "wasm32")]
+            {
+                let _ = rust_wasm_binding::commit();
+            }
         }
     });
 }
