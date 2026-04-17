@@ -4,6 +4,7 @@
 //! The component always calls counter.set(1):
 //!   - Render 1: counter=0, set(1) → 1 != 0 → re-render scheduled
 //!   - Render 2: counter=1, set(1) → 1 == 1 → no re-render
+//!
 //! Expected RENDER_COUNT: 2
 
 use std::rc::Rc;
