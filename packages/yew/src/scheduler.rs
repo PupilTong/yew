@@ -253,11 +253,21 @@ mod arch {
 
 pub(crate) use arch::*;
 
-/// Flush all pending scheduler work, ensuring all rendering and lifecycle
-/// callbacks complete. On the Paws fork the scheduler is synchronous, so
-/// this just drains pending work.
+/// Synchronously flush all pending scheduler work. Drains all pending
+/// render and lifecycle tasks. On the Paws fork the scheduler has no
+/// event loop; all rendering is driven synchronously. Thin alias for
+/// [`start_now`].
+///
+/// Call this after [`dispatch_event`](rust_wasm_binding::dispatch_event)
+/// in WASM fixtures so that state updates triggered by event callbacks
+/// are re-rendered before `run()` returns.
+pub fn flush() {
+    start_now();
+}
+
+/// Async variant of [`flush`] for tests that run inside an async executor.
 #[cfg(any(test, feature = "test"))]
-pub async fn flush() {
+pub async fn flush_async() {
     start_now();
 }
 

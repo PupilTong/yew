@@ -107,7 +107,55 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
+name = "example-yew-child-rerender"
+version = "0.1.0"
+dependencies = [
+ "rust-wasm-binding",
+ "yew",
+]
+
+[[package]]
 name = "example-yew-counter"
+version = "0.1.0"
+dependencies = [
+ "rust-wasm-binding",
+ "yew",
+]
+
+[[package]]
+name = "example-yew-multi-state-setters"
+version = "0.1.0"
+dependencies = [
+ "rust-wasm-binding",
+ "yew",
+]
+
+[[package]]
+name = "example-yew-stale-read"
+version = "0.1.0"
+dependencies = [
+ "rust-wasm-binding",
+ "yew",
+]
+
+[[package]]
+name = "example-yew-ub-deref"
+version = "0.1.0"
+dependencies = [
+ "rust-wasm-binding",
+ "yew",
+]
+
+[[package]]
+name = "example-yew-use-state-counter"
+version = "0.1.0"
+dependencies = [
+ "rust-wasm-binding",
+ "yew",
+]
+
+[[package]]
+name = "example-yew-use-state-eq"
 version = "0.1.0"
 dependencies = [
  "rust-wasm-binding",
