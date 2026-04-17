@@ -26,6 +26,9 @@ fn UBTestComponent() -> Html {
 
             // Deref: with deref_history, the Rc is cloned into a Vec (refcount=2).
             // Without the fix refcount stays 1 and the next dispatch would free it.
+            // The explicit &*state is load-bearing — it's exactly the deref call
+            // path this test exists to exercise; auto-deref would bypass it.
+            #[allow(clippy::explicit_auto_deref)]
             let borrowed: &String = &*state;
 
             // Dispatch 2: RefCell updated to "second_dispatch". Old Rc refcount
