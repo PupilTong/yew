@@ -112,3 +112,72 @@ impl Reconcilable for VComp {
         bcomp.own_position.to_position()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::html::{Component, Context, Html};
+    use crate::virtual_dom::{Key, VChild, VNode};
+    use crate::{html, Properties};
+
+    struct Comp;
+
+    #[derive(Clone, PartialEq, Properties)]
+    struct Props {
+        #[prop_or_default]
+        field_1: u32,
+        #[prop_or_default]
+        field_2: u32,
+    }
+
+    impl Component for Comp {
+        type Message = ();
+        type Properties = Props;
+
+        fn create(_: &Context<Self>) -> Self {
+            Comp
+        }
+
+        fn update(&mut self, _ctx: &Context<Self>, _: Self::Message) -> bool {
+            unimplemented!()
+        }
+
+        fn view(&self, _ctx: &Context<Self>) -> Html {
+            html! { <div/> }
+        }
+    }
+
+    #[test]
+    fn set_properties_to_component() {
+        html! { <Comp /> };
+        html! { <Comp field_1=1 /> };
+        html! { <Comp field_2=2 /> };
+        html! { <Comp field_1=1 field_2=2 /> };
+        let props = Props { field_1: 1, field_2: 1 };
+        html! { <Comp ..props /> };
+    }
+
+    #[test]
+    fn set_component_key() {
+        let test_key: Key = "test".to_string().into();
+        let check_key = |vnode: VNode| {
+            assert_eq!(vnode.key(), Some(&test_key));
+        };
+        let props = Props { field_1: 1, field_2: 1 };
+        let props_2 = props.clone();
+        check_key(html! { <Comp key={test_key.clone()} /> });
+        check_key(html! { <Comp key={test_key.clone()} field_1=1 /> });
+        check_key(html! { <Comp field_1=1 key={test_key.clone()} /> });
+        check_key(html! { <Comp key={test_key.clone()} ..props /> });
+        check_key(html! { <Comp key={test_key.clone()} ..props_2 /> });
+    }
+
+    #[test]
+    fn vchild_partialeq() {
+        let vchild1: VChild<Comp> = VChild::new(Props { field_1: 1, field_2: 1 }, None);
+        let vchild2: VChild<Comp> = VChild::new(Props { field_1: 1, field_2: 1 }, None);
+        let vchild3: VChild<Comp> = VChild::new(Props { field_1: 2, field_2: 2 }, None);
+        assert_eq!(vchild1, vchild2);
+        assert_ne!(vchild1, vchild3);
+        assert_ne!(vchild2, vchild3);
+    }
+}

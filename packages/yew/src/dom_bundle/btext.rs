@@ -100,3 +100,15 @@ impl std::fmt::Debug for BText {
         f.debug_struct("BText").field("text", &self.text).finish()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    extern crate self as yew;
+    use crate::html;
+
+    #[test]
+    fn text_as_root() {
+        let _ = html! { "Text Node As Root" };
+        let _ = html! { { "Text Node As Root" } };
+    }
+}

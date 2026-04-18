@@ -223,6 +223,18 @@ pub(crate) fn start_now() {
             scheduler_loop();
             #[cfg(any(test, feature = "test"))]
             flush_wakers::wake_all();
+            // Paws fork: after the scheduler drains all pending render /
+            // DOM-mutation work, trigger a commit so style + layout run
+            // automatically on each cycle (initial mount and subsequent
+            // re-renders alike). The commit is a no-op if the host hasn't
+            // wired `__commit` to anything.
+            //
+            // Only done on WASM targets — host-side unit tests exercise
+            // the scheduler without a linked `__commit` symbol.
+            #[cfg(target_arch = "wasm32")]
+            {
+                let _ = rust_wasm_binding::commit();
+            }
         }
     });
 }
@@ -241,11 +253,21 @@ mod arch {
 
 pub(crate) use arch::*;
 
-/// Flush all pending scheduler work, ensuring all rendering and lifecycle
-/// callbacks complete. On the Paws fork the scheduler is synchronous, so
-/// this just drains pending work.
+/// Synchronously flush all pending scheduler work. Drains all pending
+/// render and lifecycle tasks. On the Paws fork the scheduler has no
+/// event loop; all rendering is driven synchronously. Thin alias for
+/// [`start_now`].
+///
+/// Call this after [`dispatch_event`](rust_wasm_binding::dispatch_event)
+/// in WASM fixtures so that state updates triggered by event callbacks
+/// are re-rendered before `run()` returns.
+pub fn flush() {
+    start_now();
+}
+
+/// Async variant of [`flush`] for tests that run inside an async executor.
 #[cfg(any(test, feature = "test"))]
-pub async fn flush() {
+pub async fn flush_async() {
     start_now();
 }
 

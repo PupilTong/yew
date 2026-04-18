@@ -70,3 +70,32 @@ key_impl_from_to_string!(i32);
 key_impl_from_to_string!(i64);
 key_impl_from_to_string!(i128);
 key_impl_from_to_string!(isize);
+
+#[cfg(test)]
+mod tests {
+    use std::rc::Rc;
+    use crate::html;
+
+    #[test]
+    fn all_key_conversions() {
+        let _ = html! {
+            <key="string literal">
+                <img key={"String".to_owned()} />
+                <p key={Rc::<str>::from("rc")}></p>
+                <key='a'>
+                    <p key=11_usize></p>
+                    <p key=12_u8></p>
+                    <p key=13_u16></p>
+                    <p key=14_u32></p>
+                    <p key=15_u64></p>
+                    <p key=16_u128></p>
+                    <p key=21_isize></p>
+                    <p key=22_i8></p>
+                    <p key=23_i16></p>
+                    <p key=24_i32></p>
+                    <p key=25_i128></p>
+                </>
+            </>
+        };
+    }
+}

@@ -2,7 +2,16 @@
 members = [
     "packages/yew",
     "packages/yew-macro",
-    "examples/example-yew-counter",
+    # Paws-side WASM test fixtures. Their source lives in the Paws repo
+    # at examples/yew/, but they build as members of this workspace so
+    # yew's `workspace = true` dependencies resolve.
+    "../examples/yew/example-yew-counter",
+    "../examples/yew/example-yew-use-state-counter",
+    "../examples/yew/example-yew-multi-state-setters",
+    "../examples/yew/example-yew-use-state-eq",
+    "../examples/yew/example-yew-ub-deref",
+    "../examples/yew/example-yew-stale-read",
+    "../examples/yew/example-yew-child-rerender",
 ]
 exclude = ["examples/.cargo"]
 default-members = [
