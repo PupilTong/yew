@@ -74,6 +74,7 @@ key_impl_from_to_string!(isize);
 #[cfg(test)]
 mod tests {
     use std::rc::Rc;
+
     use crate::html;
 
     #[test]
