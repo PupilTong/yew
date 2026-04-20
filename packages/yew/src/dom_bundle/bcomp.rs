@@ -152,7 +152,10 @@ mod tests {
         html! { <Comp field_1=1 /> };
         html! { <Comp field_2=2 /> };
         html! { <Comp field_1=1 field_2=2 /> };
-        let props = Props { field_1: 1, field_2: 1 };
+        let props = Props {
+            field_1: 1,
+            field_2: 1,
+        };
         html! { <Comp ..props /> };
     }
 
@@ -162,7 +165,10 @@ mod tests {
         let check_key = |vnode: VNode| {
             assert_eq!(vnode.key(), Some(&test_key));
         };
-        let props = Props { field_1: 1, field_2: 1 };
+        let props = Props {
+            field_1: 1,
+            field_2: 1,
+        };
         let props_2 = props.clone();
         check_key(html! { <Comp key={test_key.clone()} /> });
         check_key(html! { <Comp key={test_key.clone()} field_1=1 /> });
@@ -173,9 +179,27 @@ mod tests {
 
     #[test]
     fn vchild_partialeq() {
-        let vchild1: VChild<Comp> = VChild::new(Props { field_1: 1, field_2: 1 }, None);
-        let vchild2: VChild<Comp> = VChild::new(Props { field_1: 1, field_2: 1 }, None);
-        let vchild3: VChild<Comp> = VChild::new(Props { field_1: 2, field_2: 2 }, None);
+        let vchild1: VChild<Comp> = VChild::new(
+            Props {
+                field_1: 1,
+                field_2: 1,
+            },
+            None,
+        );
+        let vchild2: VChild<Comp> = VChild::new(
+            Props {
+                field_1: 1,
+                field_2: 1,
+            },
+            None,
+        );
+        let vchild3: VChild<Comp> = VChild::new(
+            Props {
+                field_1: 2,
+                field_2: 2,
+            },
+            None,
+        );
         assert_eq!(vchild1, vchild2);
         assert_ne!(vchild1, vchild3);
         assert_ne!(vchild2, vchild3);
