@@ -292,13 +292,12 @@ impl VTag {
 }
 
 fn parent_namespace_is(parent: &Element, expected: &str) -> bool {
-    // Reasonably-sized local buffer covering every known HTML / SVG / MathML
-    // namespace URI. The host returns the required length; if it exceeds the
-    // buffer we conservatively assume "not a match" (namespace detection
-    // never invents SVG context where there isn't one).
-    let mut buf = [0u8; 128];
-    match rust_wasm_binding::get_namespace_uri(parent.id(), &mut buf) {
-        Ok(Some(len)) if len <= buf.len() => &buf[..len] == expected.as_bytes(),
+    // The component-model binding marshals the namespace URI as an
+    // owned `String`; namespace detection never invents SVG context
+    // where there isn't one, so missing / erroring values fall through
+    // to `false`.
+    match rust_wasm_binding::get_namespace_uri(parent.id()) {
+        Ok(Some(uri)) => uri == expected,
         _ => false,
     }
 }
