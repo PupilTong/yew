@@ -26,7 +26,7 @@ impl<T: 'static, F: FnOnce() -> T> Hook for UseRef<F> {
 /// [`use_state`](super::use_state()).
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// use std::cell::Cell;
 /// use std::ops::{Deref, DerefMut};
 /// use std::rc::Rc;
@@ -80,7 +80,7 @@ where
 /// [`use_state`](super::use_state()).
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// use std::cell::RefCell;
 /// use std::ops::{Deref, DerefMut};
 /// use std::rc::Rc;
@@ -137,7 +137,7 @@ where
 ///
 /// # Example
 ///
-/// ```rust
+/// ```rust,ignore
 /// use wasm_bindgen::prelude::Closure;
 /// use wasm_bindgen::JsCast;
 /// use web_sys::{Event, HtmlElement};

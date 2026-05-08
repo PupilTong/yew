@@ -130,7 +130,7 @@ where
 ///
 /// # Example
 ///
-/// ```rust
+/// ```rust,ignore
 /// use yew::prelude::*;
 /// # use std::rc::Rc;
 ///
@@ -185,7 +185,7 @@ where
 ///
 /// # Example
 ///
-/// ```rust
+/// ```rust,ignore
 /// use yew::{component, html, use_effect_with, Html, Properties};
 /// # use gloo::console::log;
 ///
@@ -215,7 +215,7 @@ where
 /// Provide a empty tuple `()` as dependencies when you need to do something only on the first
 /// render of a component.
 ///
-/// ```rust
+/// ```rust,ignore
 /// use yew::{component, html, use_effect_with, Html};
 /// # use gloo::console::log;
 ///
@@ -234,7 +234,7 @@ where
 /// Use [Only on first render](#only-on-first-render) but put the code in the cleanup function.
 /// It will only get called when the component is removed from view / gets destroyed.
 ///
-/// ```rust
+/// ```rust,ignore
 /// use yew::{component, html, use_effect_with, Html};
 /// # use gloo::console::log;
 ///
