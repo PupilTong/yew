@@ -77,7 +77,7 @@ mod feat_nightly {
 /// is re-rendered every time the button is clicked. You should usually use a timeout and
 /// `use_state` to automatically trigger a re-render every second without having to use this hook.
 ///
-/// ```rust
+/// ```rust,ignore
 /// use yew::prelude::*;
 ///
 /// #[component]

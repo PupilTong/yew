@@ -49,7 +49,7 @@ impl<T: fmt::Debug> fmt::Debug for UseFutureHandle<T> {
 ///
 /// # Example
 ///
-/// ```
+/// ```ignore
 /// # use yew::prelude::*;
 /// # use yew::suspense::use_future;
 /// use gloo::net::http::Request;

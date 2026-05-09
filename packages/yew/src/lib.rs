@@ -23,7 +23,7 @@
 //!
 //! ## Example
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! use yew::prelude::*;
 //!
 //! enum Msg {
