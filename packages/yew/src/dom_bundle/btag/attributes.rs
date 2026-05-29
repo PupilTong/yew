@@ -21,7 +21,7 @@ impl<T> Apply for Value<T> {
 
     fn apply(self, _root: &BSubtree, el: &Element) -> Self {
         if let Some(v) = self.deref() {
-            set_value_placeholder(el, v);
+            set_value_property(el, v);
         }
         self
     }
@@ -30,29 +30,28 @@ impl<T> Apply for Value<T> {
         match (self.deref(), (*bundle).deref()) {
             (Some(new), Some(old)) => {
                 if new != old {
-                    set_value_placeholder(el, new);
+                    set_value_property(el, new);
                 }
             }
-            (Some(new), None) => set_value_placeholder(el, new),
-            (None, Some(_)) => set_value_placeholder(el, ""),
+            (Some(new), None) => set_value_property(el, new),
+            (None, Some(_)) => set_value_property(el, ""),
             (None, None) => (),
         }
     }
 }
 
-/// Placeholder for input/textarea `.value = …`. Paws has no `set_property`
-/// host function yet, so we route through `set_attribute("value", …)`. This
-/// loses the DOM-property/attribute distinction but keeps the API shape.
-fn set_value_placeholder(el: &Element, value: &str) {
-    if let Err(err) = el.set_attribute("value", value) {
-        tracing::warn!(?err, el = el.id(), "failed to set `value` attribute");
+/// Sets the `value` DOM property on an input or textarea element.
+fn set_value_property(el: &Element, value: &str) {
+    if let Err(err) = el.set_dom_property("value", value) {
+        tracing::warn!(?err, el = el.id(), "failed to set `value` property");
     }
 }
 
-fn set_checked_placeholder(el: &Element, checked: bool) {
+/// Sets the `checked` DOM property on a checkbox/radio input.
+fn set_checked_property(el: &Element, checked: bool) {
     let value = if checked { "true" } else { "false" };
-    if let Err(err) = el.set_attribute("checked", value) {
-        tracing::warn!(?err, el = el.id(), "failed to set `checked` attribute");
+    if let Err(err) = el.set_dom_property("checked", value) {
+        tracing::warn!(?err, el = el.id(), "failed to set `checked` property");
     }
 }
 
@@ -63,7 +62,7 @@ impl Apply for InputFields {
         // IMPORTANT! This parameter has to be set every time it's explicitly given
         // to prevent strange behaviour in the browser when the DOM changes
         if let Some(checked) = self.checked {
-            set_checked_placeholder(el, checked);
+            set_checked_property(el, checked);
         }
 
         self.value = self.value.apply(root, el);
@@ -72,7 +71,7 @@ impl Apply for InputFields {
 
     fn apply_diff(self, root: &BSubtree, el: &Element, bundle: &mut Self) {
         if let Some(checked) = self.checked {
-            set_checked_placeholder(el, checked);
+            set_checked_property(el, checked);
         }
 
         self.value.apply_diff(root, el, &mut bundle.value);
@@ -84,8 +83,8 @@ impl Apply for TextareaFields {
 
     fn apply(self, root: &BSubtree, el: &Element) -> Self::Bundle {
         if let Some(def) = self.defaultvalue {
-            if let Err(err) = el.set_attribute("defaultValue", def.as_str()) {
-                tracing::warn!(?err, el = el.id(), "failed to set `defaultValue` attribute");
+            if let Err(err) = el.set_dom_property("defaultValue", def.as_str()) {
+                tracing::warn!(?err, el = el.id(), "failed to set `defaultValue` property");
             }
         }
         self.value.apply(root, el)
