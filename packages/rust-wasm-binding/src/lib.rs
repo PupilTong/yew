@@ -86,6 +86,44 @@ fn required_ref(binding: &'static str, raw: ExternRef) -> Result<ExternRef> {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum NamedElementCreate {
+    View,
+    ScrollView,
+    Text,
+    Image,
+}
+
+impl NamedElementCreate {
+    fn for_tag(tag: &str) -> Option<Self> {
+        match tag {
+            "view" => Some(Self::View),
+            "scroll-view" => Some(Self::ScrollView),
+            "text" => Some(Self::Text),
+            "image" => Some(Self::Image),
+            _ => None,
+        }
+    }
+
+    fn binding(self) -> &'static str {
+        match self {
+            Self::View => "__CreateView",
+            Self::ScrollView => "__CreateScrollView",
+            Self::Text => "__CreateText",
+            Self::Image => "__CreateImage",
+        }
+    }
+
+    fn create(self) -> ExternRef {
+        match self {
+            Self::View => raw::create_view(),
+            Self::ScrollView => raw::create_scroll_view(),
+            Self::Text => raw::create_text(),
+            Self::Image => raw::create_image(),
+        }
+    }
+}
+
 /// Host element wrapper.
 ///
 /// The wrapper stores the host `externref` directly. It does not allocate a
@@ -98,15 +136,23 @@ pub struct Element {
 impl Element {
     /// Creates an element by tag name.
     pub fn new(tag: &str) -> Result<Self> {
-        let raw = raw::create_element(tag);
-        required_ref("__CreateElement", raw).map(Self::from_raw_unchecked)
+        if let Some(create) = NamedElementCreate::for_tag(tag) {
+            required_ref(create.binding(), create.create()).map(Self::from_raw_unchecked)
+        } else {
+            Self::new_generic(tag)
+        }
     }
 
     /// Creates an element and records the namespace URI as `xmlns`.
     pub fn new_ns(namespace: &str, tag: &str) -> Result<Self> {
-        let element = Self::new(tag)?;
+        let element = Self::new_generic(tag)?;
         element.set_attribute("xmlns", namespace)?;
         Ok(element)
+    }
+
+    fn new_generic(tag: &str) -> Result<Self> {
+        let raw = raw::create_element(tag);
+        required_ref("__CreateElement", raw).map(Self::from_raw_unchecked)
     }
 
     /// Wraps a non-null host reference.
@@ -435,4 +481,36 @@ impl From<&Element> for ExternRef {
 /// Debug helper for nullable host strings.
 pub fn display_optional_string(value: Option<String>) -> Cow<'static, str> {
     value.map(Cow::Owned).unwrap_or(Cow::Borrowed(""))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NamedElementCreate;
+
+    #[test]
+    fn selects_named_create_bindings_for_lynx_elements() {
+        assert_eq!(
+            NamedElementCreate::for_tag("view").map(NamedElementCreate::binding),
+            Some("__CreateView")
+        );
+        assert_eq!(
+            NamedElementCreate::for_tag("scroll-view").map(NamedElementCreate::binding),
+            Some("__CreateScrollView")
+        );
+        assert_eq!(
+            NamedElementCreate::for_tag("text").map(NamedElementCreate::binding),
+            Some("__CreateText")
+        );
+        assert_eq!(
+            NamedElementCreate::for_tag("image").map(NamedElementCreate::binding),
+            Some("__CreateImage")
+        );
+    }
+
+    #[test]
+    fn leaves_generic_tags_on_create_element() {
+        assert_eq!(NamedElementCreate::for_tag("div"), None);
+        assert_eq!(NamedElementCreate::for_tag("page"), None);
+        assert_eq!(NamedElementCreate::for_tag("raw-text"), None);
+    }
 }
