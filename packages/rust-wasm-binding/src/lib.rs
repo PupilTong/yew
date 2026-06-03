@@ -98,7 +98,7 @@ pub struct Element {
 impl Element {
     /// Creates an element by tag name.
     pub fn new(tag: &str) -> Result<Self> {
-        let raw = raw::create_element(tag, HostValue::Null);
+        let raw = raw::create_element(tag);
         required_ref("__CreateElement", raw).map(Self::from_raw_unchecked)
     }
 
@@ -162,7 +162,7 @@ pub struct Text {
 impl Text {
     /// Creates a raw text node.
     pub fn new(text: &str) -> Result<Self> {
-        let raw = raw::create_raw_text(text, HostValue::Null);
+        let raw = raw::create_raw_text(text);
         required_ref("__CreateRawText", raw).map(Self::from_raw_unchecked)
     }
 

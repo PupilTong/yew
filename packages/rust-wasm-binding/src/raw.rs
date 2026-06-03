@@ -190,77 +190,25 @@ mod ffi {
     #[link(wasm_import_module = "env")]
     extern "C" {
         #[link_name = "__CreateElement"]
-        pub fn create_element(
-            tag_ptr: i32,
-            tag_len: i32,
-            info_kind: i32,
-            info_number: f64,
-            info_string_ptr: i32,
-            info_string_len: i32,
-            info_ref: ExternRef,
-        ) -> ExternRef;
+        pub fn create_element(tag_ptr: i32, tag_len: i32) -> ExternRef;
         #[link_name = "__CreatePage"]
-        pub fn create_page(
-            css_id: i32,
-            info_kind: i32,
-            info_number: f64,
-            info_string_ptr: i32,
-            info_string_len: i32,
-            info_ref: ExternRef,
-        ) -> ExternRef;
+        pub fn create_page() -> ExternRef;
         #[link_name = "__CreateView"]
-        pub fn create_view(
-            info_kind: i32,
-            info_number: f64,
-            info_string_ptr: i32,
-            info_string_len: i32,
-            info_ref: ExternRef,
-        ) -> ExternRef;
+        pub fn create_view() -> ExternRef;
         #[link_name = "__CreateList"]
         pub fn create_list(
             component_at_index: ExternRef,
             enqueue_component: ExternRef,
-            info_kind: i32,
-            info_number: f64,
-            info_string_ptr: i32,
-            info_string_len: i32,
-            info_ref: ExternRef,
             extra: ExternRef,
         ) -> ExternRef;
         #[link_name = "__CreateScrollView"]
-        pub fn create_scroll_view(
-            info_kind: i32,
-            info_number: f64,
-            info_string_ptr: i32,
-            info_string_len: i32,
-            info_ref: ExternRef,
-        ) -> ExternRef;
+        pub fn create_scroll_view() -> ExternRef;
         #[link_name = "__CreateText"]
-        pub fn create_text(
-            info_kind: i32,
-            info_number: f64,
-            info_string_ptr: i32,
-            info_string_len: i32,
-            info_ref: ExternRef,
-        ) -> ExternRef;
+        pub fn create_text() -> ExternRef;
         #[link_name = "__CreateImage"]
-        pub fn create_image(
-            info_kind: i32,
-            info_number: f64,
-            info_string_ptr: i32,
-            info_string_len: i32,
-            info_ref: ExternRef,
-        ) -> ExternRef;
+        pub fn create_image() -> ExternRef;
         #[link_name = "__CreateRawText"]
-        pub fn create_raw_text(
-            text_ptr: i32,
-            text_len: i32,
-            info_kind: i32,
-            info_number: f64,
-            info_string_ptr: i32,
-            info_string_len: i32,
-            info_ref: ExternRef,
-        ) -> ExternRef;
+        pub fn create_raw_text(text_ptr: i32, text_len: i32) -> ExternRef;
         #[link_name = "__CreateNonElement"]
         pub fn create_non_element() -> ExternRef;
         #[link_name = "__CreateWrapperElement"]
@@ -621,53 +569,28 @@ mod ffi {
 mod ffi {
     use super::{ExternRef, HostValueAbiOut};
 
-    pub unsafe fn create_element(
-        _: i32,
-        _: i32,
-        _: i32,
-        _: f64,
-        _: i32,
-        _: i32,
-        _: ExternRef,
-    ) -> ExternRef {
+    pub unsafe fn create_element(_: i32, _: i32) -> ExternRef {
         ExternRef::null()
     }
-    pub unsafe fn create_page(_: i32, _: i32, _: f64, _: i32, _: i32, _: ExternRef) -> ExternRef {
+    pub unsafe fn create_page() -> ExternRef {
         ExternRef::null()
     }
-    pub unsafe fn create_view(_: i32, _: f64, _: i32, _: i32, _: ExternRef) -> ExternRef {
+    pub unsafe fn create_view() -> ExternRef {
         ExternRef::null()
     }
-    pub unsafe fn create_list(
-        _: ExternRef,
-        _: ExternRef,
-        _: i32,
-        _: f64,
-        _: i32,
-        _: i32,
-        _: ExternRef,
-        _: ExternRef,
-    ) -> ExternRef {
+    pub unsafe fn create_list(_: ExternRef, _: ExternRef, _: ExternRef) -> ExternRef {
         ExternRef::null()
     }
-    pub unsafe fn create_scroll_view(_: i32, _: f64, _: i32, _: i32, _: ExternRef) -> ExternRef {
+    pub unsafe fn create_scroll_view() -> ExternRef {
         ExternRef::null()
     }
-    pub unsafe fn create_text(_: i32, _: f64, _: i32, _: i32, _: ExternRef) -> ExternRef {
+    pub unsafe fn create_text() -> ExternRef {
         ExternRef::null()
     }
-    pub unsafe fn create_image(_: i32, _: f64, _: i32, _: i32, _: ExternRef) -> ExternRef {
+    pub unsafe fn create_image() -> ExternRef {
         ExternRef::null()
     }
-    pub unsafe fn create_raw_text(
-        _: i32,
-        _: i32,
-        _: i32,
-        _: f64,
-        _: i32,
-        _: i32,
-        _: ExternRef,
-    ) -> ExternRef {
+    pub unsafe fn create_raw_text(_: i32, _: i32) -> ExternRef {
         ExternRef::null()
     }
     pub unsafe fn create_non_element() -> ExternRef {
@@ -978,28 +901,21 @@ mod ffi {
 }
 
 /// Calls `__CreateElement`.
-pub fn create_element(tag: &str, info: HostValue<'_>) -> ExternRef {
+pub fn create_element(tag: &str) -> ExternRef {
     let (tag_ptr, tag_len) = string_parts(tag);
-    let (kind, number, string_ptr, string_len, ref_value) = any_args!(info);
-    unsafe {
-        ffi::create_element(
-            tag_ptr, tag_len, kind, number, string_ptr, string_len, ref_value,
-        )
-    }
+    unsafe { ffi::create_element(tag_ptr, tag_len) }
 }
 
 /// Calls `__CreatePage`.
-pub fn create_page(css_id: i32, info: HostValue<'_>) -> ExternRef {
-    let (kind, number, string_ptr, string_len, ref_value) = any_args!(info);
-    unsafe { ffi::create_page(css_id, kind, number, string_ptr, string_len, ref_value) }
+pub fn create_page() -> ExternRef {
+    unsafe { ffi::create_page() }
 }
 
 macro_rules! create_parent_with_info {
     ($name:ident, $ffi_name:ident) => {
         /// Calls the matching create binding.
-        pub fn $name(info: HostValue<'_>) -> ExternRef {
-            let (kind, number, string_ptr, string_len, ref_value) = any_args!(info);
-            unsafe { ffi::$ffi_name(kind, number, string_ptr, string_len, ref_value) }
+        pub fn $name() -> ExternRef {
+            unsafe { ffi::$ffi_name() }
         }
     };
 }
@@ -1013,33 +929,15 @@ create_parent_with_info!(create_image, create_image);
 pub fn create_list(
     component_at_index: ExternRef,
     enqueue_component: ExternRef,
-    info: HostValue<'_>,
     extra: ExternRef,
 ) -> ExternRef {
-    let (kind, number, string_ptr, string_len, ref_value) = any_args!(info);
-    unsafe {
-        ffi::create_list(
-            component_at_index,
-            enqueue_component,
-            kind,
-            number,
-            string_ptr,
-            string_len,
-            ref_value,
-            extra,
-        )
-    }
+    unsafe { ffi::create_list(component_at_index, enqueue_component, extra) }
 }
 
 /// Calls `__CreateRawText`.
-pub fn create_raw_text(text: &str, info: HostValue<'_>) -> ExternRef {
+pub fn create_raw_text(text: &str) -> ExternRef {
     let (text_ptr, text_len) = string_parts(text);
-    let (kind, number, string_ptr, string_len, ref_value) = any_args!(info);
-    unsafe {
-        ffi::create_raw_text(
-            text_ptr, text_len, kind, number, string_ptr, string_len, ref_value,
-        )
-    }
+    unsafe { ffi::create_raw_text(text_ptr, text_len) }
 }
 
 /// Calls `__CreateNonElement`.
