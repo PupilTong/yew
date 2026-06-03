@@ -1,29 +1,22 @@
 //! Per-subtree state of apps.
 //!
-//! **Paws fork note.** The browser version of this file installs a
-//! `Closure`-wrapped handler on each subtree root via
-//! `addEventListener(capture: true)` and manually walks the
-//! `composed_path()` to route events across portals and shadow boundaries.
-//! None of that machinery exists on Paws — the host (Paws'
-//! `wasmtime-engine`) owns the W3C three-phase dispatch and invokes the
-//! guest via `__paws_invoke_listener(callback_id)`.
+//! The browser version of this file installs a `Closure`-wrapped handler on
+//! each subtree root via `addEventListener(capture: true)` and manually walks
+//! the `composed_path()` to route events across portals and shadow boundaries.
+//! The WAMR host owns native dispatch; this module keeps the guest-side routing
+//! metadata that yew needs once a real callback `ExternRef` is provided by the
+//! compiler/runtime boundary.
 //!
-//! The guest-side pieces that *do* remain are:
+//! The remaining guest-side pieces are:
 //!
-//! * `SUBTREE_IDS` / `CACHE_KEYS` — guest-side thread-local maps that replace the
-//!   `__yew_subtree_id` / `__yew_subtree_cache_key` properties upstream yew attached to DOM nodes
-//!   via duck-typed wasm_bindgen.
+//! * `SUBTREE_IDS` / `CACHE_KEYS` — event routing metadata keyed directly by
+//!   host `ExternRef`, replacing the duck-typed properties upstream yew attached
+//!   to DOM nodes.
 //! * `SubtreeData` / `BSubtree` / `ParentingInformation` — the portal bubble-path data model is
 //!   unchanged; walking the tree still uses [`ParentingInformation`] +
 //!   `rust_wasm_binding::get_parent_element`.
 //! * `Registry` (in `btag/listeners.rs`) — still the single source of truth for which handlers are
 //!   attached where; its lookup path is used by `handle()` when a host dispatch arrives.
-//!
-//! The actual host → guest callback wiring is a follow-up; today
-//! [`HostHandlers::add_listener`] is a no-op stub (see
-//! `todo!("Phase 2: …")` comments) so yew compiles and reconciles but
-//! listeners never fire. This keeps the Phase 2 diff tractable — the
-//! dispatcher-table generation is its own concern.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -31,52 +24,51 @@ use std::hash::{Hash, Hasher};
 use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
-use rust_wasm_binding::{Element, NodeOps};
+use rust_wasm_binding::{Element, ExternRef};
 
 use super::{test_log, Registry};
 use crate::virtual_dom::{Listener, ListenerKind};
 
 thread_local! {
-    /// Replaces the `__yew_subtree_id` duck-typed JS property. Keyed on the
-    /// Paws slab id of the element.
-    static SUBTREE_IDS: RefCell<HashMap<i32, TreeId>> = RefCell::new(HashMap::new());
-    /// Replaces the `__yew_subtree_cache_key` duck-typed JS property (which
+    /// Replaces the upstream `__yew_subtree_id` duck-typed property. Keyed directly
+    /// on the host reference.
+    static SUBTREE_IDS: RefCell<HashMap<ExternRef, TreeId>> = RefCell::new(HashMap::new());
+    /// Replaces the upstream `__yew_subtree_cache_key` duck-typed property (which
     /// upstream yew stored on the `Event` object itself to avoid walking
-    /// the composed path more than once per event). On Paws the event
-    /// object is transient and owned by the host; we mirror the value by
-    /// keyed node id to preserve the existing API shape even though the
-    /// cache hit rate is no longer the same.
-    static CACHE_KEYS: RefCell<HashMap<i32, u32>> = RefCell::new(HashMap::new());
+    /// the composed path more than once per event). The event object is
+    /// host-owned, so we mirror the value by element reference to preserve the
+    /// existing API shape even though the cache hit rate is no longer the same.
+    static CACHE_KEYS: RefCell<HashMap<ExternRef, u32>> = RefCell::new(HashMap::new());
 }
 
-fn get_subtree_id(el: i32) -> Option<TreeId> {
+fn get_subtree_id(el: ExternRef) -> Option<TreeId> {
     SUBTREE_IDS.with(|m| m.borrow().get(&el).copied())
 }
 
-fn set_subtree_id(el: i32, tree_id: TreeId) {
+fn set_subtree_id(el: ExternRef, tree_id: TreeId) {
     SUBTREE_IDS.with(|m| {
         m.borrow_mut().insert(el, tree_id);
     });
 }
 
-fn forget_subtree_id(el: i32) {
+fn forget_subtree_id(el: ExternRef) {
     SUBTREE_IDS.with(|m| {
         m.borrow_mut().remove(&el);
     });
 }
 
 #[allow(dead_code)]
-fn get_cache_key(el: i32) -> Option<u32> {
+fn get_cache_key(el: ExternRef) -> Option<u32> {
     CACHE_KEYS.with(|m| m.borrow().get(&el).copied())
 }
 
-fn set_cache_key(el: i32, key: u32) {
+fn set_cache_key(el: ExternRef, key: u32) {
     CACHE_KEYS.with(|m| {
         m.borrow_mut().insert(el, key);
     });
 }
 
-fn forget_cache_key(el: i32) {
+fn forget_cache_key(el: ExternRef) {
     CACHE_KEYS.with(|m| {
         m.borrow_mut().remove(&el);
     });
@@ -109,8 +101,8 @@ struct ParentingInformation {
     parent_root: Rc<SubtreeData>,
     /// Logical parent of the subtree. Might be the host element of another
     /// subtree, if mounted as a direct child, or a controlled element.
-    /// Held as `Rc<Element>` to keep the mount point alive in the host slab
-    /// while the subtree exists.
+    /// Held as `Rc<Element>` to keep the mount point handle available while
+    /// the subtree exists.
     mount_element: Rc<Element>,
 }
 
@@ -129,59 +121,17 @@ impl From<&dyn Listener> for EventDescriptor {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Host ↔ guest event dispatch wiring
-// ---------------------------------------------------------------------------
-
-thread_local! {
-    /// Maps each host-registered `callback_id` to the subtree and event
-    /// descriptor it was registered for. Populated by
-    /// [`HostHandlers::add_listener`], read by [`yew_event_dispatch`],
-    /// and cleaned up when [`HostHandlers`] is dropped.
-    static CALLBACK_DISPATCH: RefCell<HashMap<u32, DispatchEntry>> = RefCell::new(HashMap::new());
-}
-
-struct DispatchEntry {
-    subtree: Weak<SubtreeData>,
-    descriptor: EventDescriptor,
-}
-
-/// Static dispatch function registered with the host for *every* event
-/// listener. When the host fires an event, it calls
-/// [`rust_wasm_binding::paws_invoke_listener(callback_id)`][crate]
-/// which looks up this function and passes the `callback_id` through.
-/// We then map that id to the owning subtree + event descriptor and
-/// route the event through yew's internal [`SubtreeData::handle`].
-fn yew_event_dispatch(callback_id: i32) {
-    CALLBACK_DISPATCH.with(|map| {
-        let map = map.borrow();
-        let Some(entry) = map.get(&(callback_id as u32)) else {
-            return;
-        };
-        let Some(subtree) = entry.subtree.upgrade() else {
-            return;
-        };
-        let Some(target) = rust_wasm_binding::event_target() else {
-            return;
-        };
-        subtree.handle(entry.descriptor.clone(), target);
-    });
-}
-
 /// Manages host-side event listener registrations for a single subtree.
 ///
-/// Each subtree registers at most one host-side listener per event kind
-/// (delegation model). The dispatching function [`yew_event_dispatch`]
-/// uses [`CALLBACK_DISPATCH`] to route the callback to the correct
-/// subtree and event descriptor.
+/// Each subtree tracks at most one host-side listener per event kind
+/// (delegation model). The actual callback `ExternRef` must come from the
+/// compiler/runtime boundary; this module does not synthesize guest refs.
 #[derive(Debug)]
 struct HostHandlers {
     /// Shared handle to the host element where events are registered.
     host: Rc<Element>,
     /// Event types already forwarded to the host for this subtree.
     registered: HashSet<ListenerKind>,
-    /// `(callback_id, event_type_name)` pairs for cleanup.
-    callback_ids: Vec<(u32, String)>,
 }
 
 impl HostHandlers {
@@ -189,67 +139,25 @@ impl HostHandlers {
         Self {
             host,
             registered: HashSet::new(),
-            callback_ids: Vec::new(),
         }
     }
 
     /// Register a host-side event listener for the given event kind if
     /// one has not already been registered on this subtree's root.
-    fn add_listener(&mut self, subtree: &Rc<SubtreeData>, desc: &EventDescriptor) {
+    fn add_listener(&mut self, _subtree: &Rc<SubtreeData>, desc: &EventDescriptor) {
         if self.registered.insert(desc.kind.clone()) {
-            let callback_id = rust_wasm_binding::register_listener(yew_event_dispatch);
             let event_type = desc.kind.type_name();
-
-            let mut options = rust_wasm_binding::EventListenerOptions::new();
-            if desc.passive {
-                options = options.passive();
-            }
-
-            if let Err(err) = rust_wasm_binding::add_event_listener(
-                self.host.id(),
-                &event_type,
-                callback_id as i32,
-                options,
-            ) {
-                tracing::warn!(
-                    err,
-                    %event_type,
-                    "failed to register host event listener"
-                );
-                return;
-            }
-
-            // Store the mapping so yew_event_dispatch can route callbacks.
-            CALLBACK_DISPATCH.with(|map| {
-                map.borrow_mut().insert(
-                    callback_id,
-                    DispatchEntry {
-                        subtree: Rc::downgrade(subtree),
-                        descriptor: desc.clone(),
-                    },
-                );
-            });
-
-            self.callback_ids
-                .push((callback_id, event_type.into_owned()));
+            tracing::debug!(
+                host = ?self.host.id(),
+                %event_type,
+                passive = desc.passive,
+                "event listener needs a callback externref from the wasm runtime"
+            );
         }
     }
 
     /// Remove all host-side listeners and clean up the dispatch table.
-    fn cleanup(&mut self) {
-        for (callback_id, event_type) in self.callback_ids.drain(..) {
-            let _ = rust_wasm_binding::remove_event_listener(
-                self.host.id(),
-                &event_type,
-                callback_id as i32,
-                false,
-            );
-            rust_wasm_binding::unregister_listener(callback_id);
-            CALLBACK_DISPATCH.with(|m| {
-                m.borrow_mut().remove(&callback_id);
-            });
-        }
-    }
+    fn cleanup(&mut self) {}
 }
 
 impl Drop for HostHandlers {
@@ -268,7 +176,7 @@ struct SubtreeData {
 
     subtree_id: TreeId,
     /// Shared handle to the host element. Kept as `Rc<Element>` so the
-    /// slab entry stays alive for the lifetime of the subtree.
+    /// host reference stays available for the lifetime of the subtree.
     host: Rc<Element>,
     event_registry: RefCell<Registry>,
     global: RefCell<HostHandlers>,
@@ -340,22 +248,25 @@ pub fn set_event_bubbling(bubble: bool) {
     BUBBLE_EVENTS.store(bubble, Ordering::Relaxed);
 }
 
-/// Walk a single step of the bubble path. In the browser this crossed
-/// shadow DOM boundaries via `ShadowRoot::host()`; on Paws the guest has
-/// no shadow-root awareness, so we just walk physical parents.
-fn parent_step(el: i32) -> Option<i32> {
+/// Walk a single step of the bubble path. The browser implementation crosses
+/// shadow DOM boundaries via `ShadowRoot::host()`; the WAMR binding currently
+/// walks physical parents through the host ABI.
+fn parent_step(el: ExternRef) -> Option<ExternRef> {
     rust_wasm_binding::get_parent_element(el)
 }
 
 struct BrandingSearchResult {
     branding: TreeId,
-    closest_branded_ancestor: i32,
+    closest_branded_ancestor: ExternRef,
 }
 
 /// Deduce the subtree an element is part of. This already partially starts
 /// the bubbling process, as long as no listeners are encountered.
 /// Subtree roots are always branded with their own subtree id.
-fn find_closest_branded_element(mut el: i32, do_bubble: bool) -> Option<BrandingSearchResult> {
+fn find_closest_branded_element(
+    mut el: ExternRef,
+    do_bubble: bool,
+) -> Option<BrandingSearchResult> {
     if !do_bubble {
         let branding = get_subtree_id(el)?;
         Some(BrandingSearchResult {
@@ -380,9 +291,9 @@ fn find_closest_branded_element(mut el: i32, do_bubble: bool) -> Option<Branding
 /// If bubbling is turned off, yields at most a single element.
 fn start_bubbling_from(
     subtree: &SubtreeData,
-    root_or_listener: i32,
+    root_or_listener: ExternRef,
     should_bubble: bool,
-) -> impl '_ + Iterator<Item = (&'_ SubtreeData, i32)> {
+) -> impl '_ + Iterator<Item = (&'_ SubtreeData, ExternRef)> {
     let start = subtree.bubble_to_inner_element(root_or_listener, should_bubble);
 
     std::iter::successors(start, move |(subtree, element)| {
@@ -425,7 +336,11 @@ impl SubtreeData {
     }
 
     // Bubble a potential parent until it reaches an internal element
-    fn bubble_to_inner_element(&self, parent_el: i32, should_bubble: bool) -> Option<(&Self, i32)> {
+    fn bubble_to_inner_element(
+        &self,
+        parent_el: ExternRef,
+        should_bubble: bool,
+    ) -> Option<(&Self, ExternRef)> {
         let mut next_subtree = self;
         let mut next_el = parent_el;
         if !should_bubble && next_subtree.host.id() == next_el {
@@ -447,8 +362,8 @@ impl SubtreeData {
     #[allow(dead_code)]
     fn start_bubbling_if_responsible<'s>(
         &'s self,
-        target: i32,
-    ) -> Option<impl 's + Iterator<Item = (&'s SubtreeData, i32)>> {
+        target: ExternRef,
+    ) -> Option<impl 's + Iterator<Item = (&'s SubtreeData, ExternRef)>> {
         let should_bubble = BUBBLE_EVENTS.load(Ordering::Relaxed);
         let (responsible_tree_id, bubbling_start) =
             if let Some(branding) = find_closest_branded_element(target, should_bubble) {
@@ -456,8 +371,8 @@ impl SubtreeData {
                     branding,
                     closest_branded_ancestor,
                 } = branding;
-                // Cache branding on the target element id (mirrors upstream
-                // yew's mutation of the Event object).
+                // Cache branding on the target element reference (mirrors
+                // upstream yew's mutation of the Event object).
                 set_cache_key(target, branding);
                 (branding, closest_branded_ancestor)
             } else {
@@ -479,12 +394,11 @@ impl SubtreeData {
     ///
     /// Route a host-dispatched event to yew's listener registry.
     ///
-    /// Called from [`yew_event_dispatch`] when the host invokes a
-    /// callback registered on this subtree's root element. Walks the
-    /// virtual DOM tree from `target` upward (software bubbling),
+    /// Walks the virtual DOM tree from `target` upward (software bubbling),
     /// invoking every registered handler that matches `desc`.
-    fn handle(&self, desc: EventDescriptor, target: i32) {
-        let run_handler = |root: &Self, el: i32| {
+    #[allow(dead_code)]
+    fn handle(&self, desc: EventDescriptor, target: ExternRef) {
+        let run_handler = |root: &Self, el: ExternRef| {
             let handler = Registry::get_handler(root.event_registry(), &el, &desc);
             if let Some(handler) = handler {
                 handler();
@@ -493,9 +407,8 @@ impl SubtreeData {
         if let Some(bubbling_it) = self.start_bubbling_if_responsible(target) {
             test_log!("Running handler on subtree {}", self.subtree_id);
             for (subtree, el) in bubbling_it {
-                // Paws exposes `event_default_prevented()` but not a
-                // dedicated cancel_bubble bit; use prevent-default as a
-                // stand-in until the dispatcher wiring is fleshed out.
+                // The host ABI currently exposes prevent-default state but no
+                // dedicated cancel-bubble bit.
                 if rust_wasm_binding::event_default_prevented() {
                     break;
                 }
@@ -544,15 +457,14 @@ impl BSubtree {
         f(&mut self.0.event_registry().borrow_mut())
     }
 
-    pub fn brand_element(&self, el: i32) {
+    pub fn brand_element(&self, el: ExternRef) {
         set_subtree_id(el, self.0.subtree_id);
     }
 
-    /// Remove subtree branding and any cached keys from a node that is
-    /// being detached. This prevents stale entries in the guest-side
-    /// `SUBTREE_IDS` / `CACHE_KEYS` maps from misrouting events after the
-    /// Paws slab id is recycled for an unrelated node.
-    pub fn unbrand_element(&self, el: i32) {
+    /// Remove subtree branding and any cached keys from a node that is being
+    /// detached. This prevents stale entries in `SUBTREE_IDS` / `CACHE_KEYS`
+    /// from misrouting events after a host reference becomes stale.
+    pub fn unbrand_element(&self, el: ExternRef) {
         forget_subtree_id(el);
         forget_cache_key(el);
     }

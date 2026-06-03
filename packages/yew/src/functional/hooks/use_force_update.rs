@@ -82,12 +82,19 @@ mod feat_nightly {
 ///
 /// #[component]
 /// fn ManuallyUpdatedDate() -> Html {
+///     let clicks = use_state(|| 0);
 ///     let trigger = use_force_update();
-///     let onclick = use_state(move || Callback::from(move |_| trigger.force_update()));
-///     let last_update = js_sys::Date::new_0().to_utc_string();
+///     let onclick = {
+///         let clicks = clicks.clone();
+///         Callback::from(move |_| {
+///             clicks.set(*clicks + 1);
+///             trigger.force_update();
+///         })
+///     };
+///     let last_update = format!("update #{}", *clicks);
 ///     html! {
 ///         <div>
-///             <button onclick={&*onclick}>{"Update now!"}</button>
+///             <button {onclick}>{"Update now!"}</button>
 ///             <p>{"Last updated: "}{last_update}</p>
 ///         </div>
 ///     }

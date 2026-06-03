@@ -1,9 +1,8 @@
 // Inspired by: http://package.elm-lang.org/packages/elm-lang/html/2.0.0/Html-Events
 //
-// In the Paws fork we don't have web_sys::MouseEvent / KeyboardEvent / etc.
-// The event payload is unit (`()`) for every listener kind; closures that
-// need to look at modifier keys, coordinates, or the target element should
-// call `rust_wasm_binding::event_*` helpers during dispatch.
+// The event payload is unit (`()`) for every listener kind; closures that need
+// to look at modifier keys, coordinates, or the target element should call
+// `rust_wasm_binding::event_*` helpers during dispatch.
 
 macro_rules! impl_action {
     ($($action:ident($passive:literal))*) => {$(
@@ -36,7 +35,7 @@ macro_rules! impl_action {
                 }
             }
 
-            /// The event payload. Unit in the Paws fork; event details are
+            /// The event payload. Unit in the WAMR runtime; event details are
             /// queried from the host via `rust_wasm_binding::event_*`.
             pub type Event = ();
 
@@ -69,7 +68,7 @@ macro_rules! impl_passive {
     };
 }
 
-// All non-passive listener kinds. The Paws fork no longer distinguishes the
+// All non-passive listener kinds. The WAMR runtime no longer distinguishes the
 // event payload type per kind; the only difference between wrappers is the
 // `ListenerKind` enum tag and whether the listener is registered passive.
 impl_active! {

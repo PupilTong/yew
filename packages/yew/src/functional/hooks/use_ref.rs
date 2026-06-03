@@ -31,7 +31,6 @@ impl<T: 'static, F: FnOnce() -> T> Hook for UseRef<F> {
 /// use std::ops::{Deref, DerefMut};
 /// use std::rc::Rc;
 ///
-/// use web_sys::HtmlInputElement;
 /// use yew::prelude::*;
 ///
 /// #[component(UseRef)]
@@ -39,23 +38,18 @@ impl<T: 'static, F: FnOnce() -> T> Hook for UseRef<F> {
 ///     let message = use_state(|| "".to_string());
 ///     let message_count = use_ref(|| Cell::new(0));
 ///
-///     let onclick = Callback::from(move |e| {
-///         let window = gloo::utils::window();
-///
+///     let onclick = Callback::from(move |_| {
 ///         if message_count.get() > 3 {
-///             window.alert_with_message("Message limit reached");
+///             message.set("Message limit reached".to_string());
 ///         } else {
 ///             message_count.set(message_count.get() + 1);
-///             window.alert_with_message("Message sent");
+///             message.set("Message sent".to_string());
 ///         }
 ///     });
 ///
 ///     let onchange = {
 ///         let message = message.clone();
-///         Callback::from(move |e: Event| {
-///             let input: HtmlInputElement = e.target_unchecked_into();
-///             message.set(input.value())
-///         })
+///         Callback::from(move |_| message.set("changed".to_string()))
 ///     };
 ///
 ///     html! {
@@ -65,6 +59,7 @@ impl<T: 'static, F: FnOnce() -> T> Hook for UseRef<F> {
 ///         </div>
 ///     }
 /// }
+/// ```
 pub fn use_ref<T: 'static, F>(init_fn: F) -> impl Hook<Output = Rc<T>>
 where
     F: FnOnce() -> T,
@@ -85,7 +80,6 @@ where
 /// use std::ops::{Deref, DerefMut};
 /// use std::rc::Rc;
 ///
-/// use web_sys::HtmlInputElement;
 /// use yew::prelude::*;
 ///
 /// #[component(UseRef)]
@@ -93,23 +87,18 @@ where
 ///     let message = use_state(|| "".to_string());
 ///     let message_count = use_mut_ref(|| 0);
 ///
-///     let onclick = Callback::from(move |e| {
-///         let window = gloo::utils::window();
-///
+///     let onclick = Callback::from(move |_| {
 ///         if *message_count.borrow_mut() > 3 {
-///             window.alert_with_message("Message limit reached");
+///             message.set("Message limit reached".to_string());
 ///         } else {
 ///             *message_count.borrow_mut() += 1;
-///             window.alert_with_message("Message sent");
+///             message.set("Message sent".to_string());
 ///         }
 ///     });
 ///
 ///     let onchange = {
 ///         let message = message.clone();
-///         Callback::from(move |e: Event| {
-///             let input: HtmlInputElement = e.target_unchecked_into();
-///             message.set(input.value())
-///         })
+///         Callback::from(move |_| message.set("changed".to_string()))
 ///     };
 ///
 ///     html! {
@@ -138,9 +127,6 @@ where
 /// # Example
 ///
 /// ```rust,ignore
-/// use wasm_bindgen::prelude::Closure;
-/// use wasm_bindgen::JsCast;
-/// use web_sys::{Event, HtmlElement};
 /// use yew::{component, html, use_effect_with, use_node_ref, Html};
 ///
 /// #[component(UseNodeRef)]
@@ -151,24 +137,8 @@ where
 ///         let div_ref = div_ref.clone();
 ///
 ///         use_effect_with(div_ref, |div_ref| {
-///             let div = div_ref
-///                 .cast::<HtmlElement>()
-///                 .expect("div_ref not attached to div element");
-///
-///             let listener = Closure::<dyn Fn(Event)>::wrap(Box::new(|_| {
-///                 web_sys::console::log_1(&"Clicked!".into());
-///             }));
-///
-///             div.add_event_listener_with_callback("click", listener.as_ref().unchecked_ref())
-///                 .unwrap();
-///
-///             move || {
-///                 div.remove_event_listener_with_callback(
-///                     "click",
-///                     listener.as_ref().unchecked_ref(),
-///                 )
-///                 .unwrap();
-///             }
+///             let attached = div_ref.get().is_some();
+///             move || drop(attached)
 ///         });
 ///     }
 ///

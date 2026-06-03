@@ -232,10 +232,10 @@ impl<COMP: BaseComponent> Scope<COMP> {
         Fut::Output: SendAsMessage<COMP>,
     {
         let link = self.clone();
-        let js_future = async move {
+        let future = async move {
             future.await.send(&link);
         };
-        spawn_local(js_future);
+        spawn_local(future);
     }
 
     /// This method asynchronously awaits a [`Stream`] that returns a series of messages and sends
@@ -257,14 +257,14 @@ impl<COMP: BaseComponent> Scope<COMP> {
         S: Stream<Item = M> + 'static,
     {
         let link = self.clone();
-        let js_future = async move {
+        let future = async move {
             futures::pin_mut!(stream);
             while let Some(msg) = stream.next().await {
                 let message: COMP::Message = msg.into();
                 link.send_message(message);
             }
         };
-        spawn_local(js_future);
+        spawn_local(future);
     }
 
     /// Returns the linked component if available

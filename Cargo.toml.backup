@@ -1,17 +1,8 @@
 [workspace]
 members = [
+    "packages/rust-wasm-binding",
     "packages/yew",
     "packages/yew-macro",
-    # Paws-side WASM test fixtures. Their source lives in the Paws repo
-    # at examples/yew/, but they build as members of this workspace so
-    # yew's `workspace = true` dependencies resolve.
-    "../examples/yew/example-yew-counter",
-    "../examples/yew/example-yew-use-state-counter",
-    "../examples/yew/example-yew-multi-state-setters",
-    "../examples/yew/example-yew-use-state-eq",
-    "../examples/yew/example-yew-ub-deref",
-    "../examples/yew/example-yew-stale-read",
-    "../examples/yew/example-yew-child-rerender",
 ]
 exclude = ["examples/.cargo"]
 default-members = [
@@ -36,7 +27,6 @@ unexpected_cfgs = { level = "warn", check-cfg = [
     "cfg(verbose_tests)",
     "cfg(yew_lints)",
     "cfg(nightly_yew)",
-    "cfg(wasm_bindgen_unstable_test_coverage)",
 ]}
 [workspace.dependencies]
 tokio = { version = "1.50.0" }
@@ -46,22 +36,13 @@ quote = "1"
 syn = { version = "2" }
 trybuild = "1"
 clap = { version = "4", features = ["derive"] }
-wasm-bindgen = "0.2"
-wasm-bindgen-futures = "0.4"
-wasm-bindgen-test = "0.3"
-js-sys = "0.3"
-web-sys = "0.3"
-gloo = "0.11"
 serde = "1"
 serde_json = "1"
 futures = { version = "0.3", default-features = false }
 log = "0.4"
-wasm-logger = "0.2"
-tracing-web = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt"] }
 rand = "0.9"
-getrandom = { version = "0.3", features = ["wasm_js"] }
-instant = { version = "0.1", features = ["wasm-bindgen"] }
+getrandom = "0.3"
 rustversion = "1"
 strum = "0.28"
 strum_macros = "0.28"

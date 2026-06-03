@@ -3,7 +3,7 @@
 use std::ops::Deref;
 use std::rc::Rc;
 
-use rust_wasm_binding::{Element, NodeOps};
+use rust_wasm_binding::Element;
 
 use crate::dom_bundle::{BSubtree, DomSlot};
 use crate::html::{BaseComponent, Scope, Scoped};

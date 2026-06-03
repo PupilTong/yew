@@ -223,8 +223,8 @@ pub(crate) fn start_now() {
             scheduler_loop();
             #[cfg(any(test, feature = "test"))]
             flush_wakers::wake_all();
-            // Paws fork: after the scheduler drains all pending render /
-            // DOM-mutation work, trigger a commit so style + layout run
+            // WAMR runtime: after the scheduler drains all pending render /
+            // host-mutation work, trigger a commit so style + layout run
             // automatically on each cycle (initial mount and subsequent
             // re-renders alike). The commit is a no-op if the host hasn't
             // wired `__commit` to anything.
@@ -240,12 +240,9 @@ pub(crate) fn start_now() {
 }
 
 mod arch {
-    // Paws fork: delayed rendering / browser-main-thread yielding is not
-    // useful when there is no event loop to yield to. The scheduler is
-    // driven synchronously — the host drains queues end-to-end on each
-    // call from the guest, and dispatched events run inline. This is the
-    // same shape upstream yew used for its non-browser code path
-    // (server-side rendering, WASI).
+    // WAMR/WASI runtime: the scheduler is driven synchronously. The host
+    // drains queues end-to-end on each call from the guest, and dispatched
+    // events run inline.
     pub(crate) fn start() {
         super::start_now();
     }
@@ -254,8 +251,8 @@ mod arch {
 pub(crate) use arch::*;
 
 /// Synchronously flush all pending scheduler work. Drains all pending
-/// render and lifecycle tasks. On the Paws fork the scheduler has no
-/// event loop; all rendering is driven synchronously. Thin alias for
+/// render and lifecycle tasks. In the WAMR/WASI runtime all rendering is
+/// driven synchronously. Thin alias for
 /// [`start_now`].
 ///
 /// Call this after [`dispatch_event`](rust_wasm_binding::dispatch_event)

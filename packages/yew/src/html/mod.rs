@@ -66,7 +66,6 @@ impl PartialEq for NodeRef {
 
 impl std::fmt::Debug for NodeRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use rust_wasm_binding::NodeOps;
         write!(
             f,
             "NodeRef {{ references: {:?} }}",

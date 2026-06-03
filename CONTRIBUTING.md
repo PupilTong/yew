@@ -5,7 +5,7 @@
 ### Add the Wasm target
 
 ```bash
-rustup target add wasm32-unknown-unknown
+rustup target add wasm32-wasip1
 ```
 
 ### Install [cargo-make](https://github.com/sagiegurari/cargo-make)
