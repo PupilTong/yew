@@ -98,7 +98,7 @@ pub struct Element {
 impl Element {
     /// Creates an element by tag name.
     pub fn new(tag: &str) -> Result<Self> {
-        let raw = raw::create_element(tag, 0, HostValue::Null);
+        let raw = raw::create_element(tag, HostValue::Null);
         required_ref("__CreateElement", raw).map(Self::from_raw_unchecked)
     }
 

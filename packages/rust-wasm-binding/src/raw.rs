@@ -193,7 +193,6 @@ mod ffi {
         pub fn create_element(
             tag_ptr: i32,
             tag_len: i32,
-            type_id: i32,
             info_kind: i32,
             info_number: f64,
             info_string_ptr: i32,
@@ -202,8 +201,6 @@ mod ffi {
         ) -> ExternRef;
         #[link_name = "__CreatePage"]
         pub fn create_page(
-            component_id_ptr: i32,
-            component_id_len: i32,
             css_id: i32,
             info_kind: i32,
             info_number: f64,
@@ -213,7 +210,6 @@ mod ffi {
         ) -> ExternRef;
         #[link_name = "__CreateView"]
         pub fn create_view(
-            parent_component_id: i32,
             info_kind: i32,
             info_number: f64,
             info_string_ptr: i32,
@@ -222,7 +218,6 @@ mod ffi {
         ) -> ExternRef;
         #[link_name = "__CreateList"]
         pub fn create_list(
-            parent_component_id: i32,
             component_at_index: ExternRef,
             enqueue_component: ExternRef,
             info_kind: i32,
@@ -234,7 +229,6 @@ mod ffi {
         ) -> ExternRef;
         #[link_name = "__CreateScrollView"]
         pub fn create_scroll_view(
-            parent_component_id: i32,
             info_kind: i32,
             info_number: f64,
             info_string_ptr: i32,
@@ -243,7 +237,6 @@ mod ffi {
         ) -> ExternRef;
         #[link_name = "__CreateText"]
         pub fn create_text(
-            parent_component_id: i32,
             info_kind: i32,
             info_number: f64,
             info_string_ptr: i32,
@@ -252,7 +245,6 @@ mod ffi {
         ) -> ExternRef;
         #[link_name = "__CreateImage"]
         pub fn create_image(
-            parent_component_id: i32,
             info_kind: i32,
             info_number: f64,
             info_string_ptr: i32,
@@ -270,9 +262,9 @@ mod ffi {
             info_ref: ExternRef,
         ) -> ExternRef;
         #[link_name = "__CreateNonElement"]
-        pub fn create_non_element(parent_component_id: i32) -> ExternRef;
+        pub fn create_non_element() -> ExternRef;
         #[link_name = "__CreateWrapperElement"]
-        pub fn create_wrapper_element(parent_component_id: i32) -> ExternRef;
+        pub fn create_wrapper_element() -> ExternRef;
         #[link_name = "__AppendElement"]
         pub fn append_element(parent: ExternRef, child: ExternRef) -> ExternRef;
         #[link_name = "__RemoveElement"]
@@ -633,7 +625,6 @@ mod ffi {
         _: i32,
         _: i32,
         _: i32,
-        _: i32,
         _: f64,
         _: i32,
         _: i32,
@@ -641,23 +632,13 @@ mod ffi {
     ) -> ExternRef {
         ExternRef::null()
     }
-    pub unsafe fn create_page(
-        _: i32,
-        _: i32,
-        _: i32,
-        _: i32,
-        _: f64,
-        _: i32,
-        _: i32,
-        _: ExternRef,
-    ) -> ExternRef {
+    pub unsafe fn create_page(_: i32, _: i32, _: f64, _: i32, _: i32, _: ExternRef) -> ExternRef {
         ExternRef::null()
     }
-    pub unsafe fn create_view(_: i32, _: i32, _: f64, _: i32, _: i32, _: ExternRef) -> ExternRef {
+    pub unsafe fn create_view(_: i32, _: f64, _: i32, _: i32, _: ExternRef) -> ExternRef {
         ExternRef::null()
     }
     pub unsafe fn create_list(
-        _: i32,
         _: ExternRef,
         _: ExternRef,
         _: i32,
@@ -669,20 +650,13 @@ mod ffi {
     ) -> ExternRef {
         ExternRef::null()
     }
-    pub unsafe fn create_scroll_view(
-        _: i32,
-        _: i32,
-        _: f64,
-        _: i32,
-        _: i32,
-        _: ExternRef,
-    ) -> ExternRef {
+    pub unsafe fn create_scroll_view(_: i32, _: f64, _: i32, _: i32, _: ExternRef) -> ExternRef {
         ExternRef::null()
     }
-    pub unsafe fn create_text(_: i32, _: i32, _: f64, _: i32, _: i32, _: ExternRef) -> ExternRef {
+    pub unsafe fn create_text(_: i32, _: f64, _: i32, _: i32, _: ExternRef) -> ExternRef {
         ExternRef::null()
     }
-    pub unsafe fn create_image(_: i32, _: i32, _: f64, _: i32, _: i32, _: ExternRef) -> ExternRef {
+    pub unsafe fn create_image(_: i32, _: f64, _: i32, _: i32, _: ExternRef) -> ExternRef {
         ExternRef::null()
     }
     pub unsafe fn create_raw_text(
@@ -696,10 +670,10 @@ mod ffi {
     ) -> ExternRef {
         ExternRef::null()
     }
-    pub unsafe fn create_non_element(_: i32) -> ExternRef {
+    pub unsafe fn create_non_element() -> ExternRef {
         ExternRef::null()
     }
-    pub unsafe fn create_wrapper_element(_: i32) -> ExternRef {
+    pub unsafe fn create_wrapper_element() -> ExternRef {
         ExternRef::null()
     }
     pub unsafe fn append_element(_: ExternRef, child: ExternRef) -> ExternRef {
@@ -1004,56 +978,28 @@ mod ffi {
 }
 
 /// Calls `__CreateElement`.
-pub fn create_element(tag: &str, parent_component_id: i32, info: HostValue<'_>) -> ExternRef {
+pub fn create_element(tag: &str, info: HostValue<'_>) -> ExternRef {
     let (tag_ptr, tag_len) = string_parts(tag);
     let (kind, number, string_ptr, string_len, ref_value) = any_args!(info);
     unsafe {
         ffi::create_element(
-            tag_ptr,
-            tag_len,
-            parent_component_id,
-            kind,
-            number,
-            string_ptr,
-            string_len,
-            ref_value,
+            tag_ptr, tag_len, kind, number, string_ptr, string_len, ref_value,
         )
     }
 }
 
 /// Calls `__CreatePage`.
-pub fn create_page(component_id: &str, css_id: i32, info: HostValue<'_>) -> ExternRef {
-    let (component_id_ptr, component_id_len) = string_parts(component_id);
+pub fn create_page(css_id: i32, info: HostValue<'_>) -> ExternRef {
     let (kind, number, string_ptr, string_len, ref_value) = any_args!(info);
-    unsafe {
-        ffi::create_page(
-            component_id_ptr,
-            component_id_len,
-            css_id,
-            kind,
-            number,
-            string_ptr,
-            string_len,
-            ref_value,
-        )
-    }
+    unsafe { ffi::create_page(css_id, kind, number, string_ptr, string_len, ref_value) }
 }
 
 macro_rules! create_parent_with_info {
     ($name:ident, $ffi_name:ident) => {
         /// Calls the matching create binding.
-        pub fn $name(parent_component_id: i32, info: HostValue<'_>) -> ExternRef {
+        pub fn $name(info: HostValue<'_>) -> ExternRef {
             let (kind, number, string_ptr, string_len, ref_value) = any_args!(info);
-            unsafe {
-                ffi::$ffi_name(
-                    parent_component_id,
-                    kind,
-                    number,
-                    string_ptr,
-                    string_len,
-                    ref_value,
-                )
-            }
+            unsafe { ffi::$ffi_name(kind, number, string_ptr, string_len, ref_value) }
         }
     };
 }
@@ -1065,7 +1011,6 @@ create_parent_with_info!(create_image, create_image);
 
 /// Calls `__CreateList`.
 pub fn create_list(
-    parent_component_id: i32,
     component_at_index: ExternRef,
     enqueue_component: ExternRef,
     info: HostValue<'_>,
@@ -1074,7 +1019,6 @@ pub fn create_list(
     let (kind, number, string_ptr, string_len, ref_value) = any_args!(info);
     unsafe {
         ffi::create_list(
-            parent_component_id,
             component_at_index,
             enqueue_component,
             kind,
@@ -1099,13 +1043,13 @@ pub fn create_raw_text(text: &str, info: HostValue<'_>) -> ExternRef {
 }
 
 /// Calls `__CreateNonElement`.
-pub fn create_non_element(parent_component_id: i32) -> ExternRef {
-    unsafe { ffi::create_non_element(parent_component_id) }
+pub fn create_non_element() -> ExternRef {
+    unsafe { ffi::create_non_element() }
 }
 
 /// Calls `__CreateWrapperElement`.
-pub fn create_wrapper_element(parent_component_id: i32) -> ExternRef {
-    unsafe { ffi::create_wrapper_element(parent_component_id) }
+pub fn create_wrapper_element() -> ExternRef {
+    unsafe { ffi::create_wrapper_element() }
 }
 
 macro_rules! two_ref_return_ref {
