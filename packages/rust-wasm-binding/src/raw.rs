@@ -235,15 +235,6 @@ mod ffi {
         pub fn get_parent(element: ExternRef) -> ExternRef;
         #[link_name = "__GetChildren"]
         pub fn get_children(element: ExternRef) -> ExternRef;
-        #[link_name = "__CloneElement"]
-        pub fn clone_element(
-            element: ExternRef,
-            deep_kind: i32,
-            deep_number: f64,
-            deep_string_ptr: i32,
-            deep_string_len: i32,
-            deep_ref: ExternRef,
-        ) -> ExternRef;
         #[link_name = "__ElementIsEqual"]
         pub fn element_is_equal(left: ExternRef, right: ExternRef) -> i32;
         #[link_name = "__GetElementUniqueID"]
@@ -551,10 +542,6 @@ mod ffi {
         pub fn set_interval(callback: ExternRef, delay_ms: i64) -> i64;
         #[link_name = "clearInterval"]
         pub fn clear_interval(timer_id: i64);
-        #[link_name = "__AdoptStyleSheet"]
-        pub fn adopt_style_sheet(sheet: ExternRef);
-        #[link_name = "__ReplaceStyleSheets"]
-        pub fn replace_style_sheets();
     }
 }
 
@@ -623,16 +610,6 @@ mod ffi {
     }
     pub unsafe fn get_children(_: ExternRef) -> ExternRef {
         ExternRef::null()
-    }
-    pub unsafe fn clone_element(
-        element: ExternRef,
-        _: i32,
-        _: f64,
-        _: i32,
-        _: i32,
-        _: ExternRef,
-    ) -> ExternRef {
-        element
     }
     pub unsafe fn element_is_equal(left: ExternRef, right: ExternRef) -> i32 {
         (left == right) as i32
@@ -887,8 +864,6 @@ mod ffi {
         0
     }
     pub unsafe fn clear_interval(_: i64) {}
-    pub unsafe fn adopt_style_sheet(_: ExternRef) {}
-    pub unsafe fn replace_style_sheets() {}
 }
 
 /// Calls `__CreateElement`.
@@ -987,12 +962,6 @@ pub fn replace_element(new_element: ExternRef, old_element: ExternRef) {
 /// Calls `__SwapElement`.
 pub fn swap_element(left: ExternRef, right: ExternRef) {
     unsafe { ffi::swap_element(left, right) }
-}
-
-/// Calls `__CloneElement`.
-pub fn clone_element(element: ExternRef, deep: HostValue<'_>) -> ExternRef {
-    let (kind, number, string_ptr, string_len, ref_value) = any_args!(deep);
-    unsafe { ffi::clone_element(element, kind, number, string_ptr, string_len, ref_value) }
 }
 
 /// Calls `__ElementIsEqual`.
@@ -1384,14 +1353,4 @@ pub fn set_interval(callback: ExternRef, delay_ms: i64) -> i64 {
 /// Calls `clearInterval`.
 pub fn clear_interval(timer_id: i64) {
     unsafe { ffi::clear_interval(timer_id) }
-}
-
-/// Calls `__AdoptStyleSheet`.
-pub fn adopt_style_sheet(sheet: ExternRef) {
-    unsafe { ffi::adopt_style_sheet(sheet) }
-}
-
-/// Calls `__ReplaceStyleSheets`.
-pub fn replace_style_sheets() {
-    unsafe { ffi::replace_style_sheets() }
 }
