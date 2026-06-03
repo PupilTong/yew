@@ -202,9 +202,9 @@ mod ffi {
         ) -> ExternRef;
         #[link_name = "__CreatePage"]
         pub fn create_page(
-            tag_ptr: i32,
-            tag_len: i32,
-            type_id: i32,
+            component_id_ptr: i32,
+            component_id_len: i32,
+            css_id: i32,
             info_kind: i32,
             info_number: f64,
             info_string_ptr: i32,
@@ -1004,23 +1004,37 @@ mod ffi {
 }
 
 /// Calls `__CreateElement`.
-pub fn create_element(tag: &str, type_id: i32, info: HostValue<'_>) -> ExternRef {
+pub fn create_element(tag: &str, parent_component_id: i32, info: HostValue<'_>) -> ExternRef {
     let (tag_ptr, tag_len) = string_parts(tag);
     let (kind, number, string_ptr, string_len, ref_value) = any_args!(info);
     unsafe {
         ffi::create_element(
-            tag_ptr, tag_len, type_id, kind, number, string_ptr, string_len, ref_value,
+            tag_ptr,
+            tag_len,
+            parent_component_id,
+            kind,
+            number,
+            string_ptr,
+            string_len,
+            ref_value,
         )
     }
 }
 
 /// Calls `__CreatePage`.
-pub fn create_page(tag: &str, type_id: i32, info: HostValue<'_>) -> ExternRef {
-    let (tag_ptr, tag_len) = string_parts(tag);
+pub fn create_page(component_id: &str, css_id: i32, info: HostValue<'_>) -> ExternRef {
+    let (component_id_ptr, component_id_len) = string_parts(component_id);
     let (kind, number, string_ptr, string_len, ref_value) = any_args!(info);
     unsafe {
         ffi::create_page(
-            tag_ptr, tag_len, type_id, kind, number, string_ptr, string_len, ref_value,
+            component_id_ptr,
+            component_id_len,
+            css_id,
+            kind,
+            number,
+            string_ptr,
+            string_len,
+            ref_value,
         )
     }
 }
