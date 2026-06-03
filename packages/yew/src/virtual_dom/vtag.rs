@@ -11,9 +11,8 @@ use crate::html::{ImplicitClone, IntoPropValue, NodeRef};
 
 /// Compile-time marker for an `<input>` element's `Value<T>` slot.
 ///
-/// In the upstream browser fork this was `web_sys::HtmlInputElement`; the
-/// only thing the slot does is distinguish an input's value from a textarea's
-/// at the type level, so a unit struct suffices.
+/// The only thing the slot does is distinguish an input's value from a
+/// textarea's at the type level, so a unit struct suffices.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InputMarker;
 
@@ -292,7 +291,7 @@ impl VTag {
         }
     }
 
-    /// Returns tag of an [Element](web_sys::Element). In HTML tags are always uppercase.
+    /// Returns the tag of this virtual element. In HTML, tags are always uppercase.
     pub fn tag(&self) -> &str {
         match &self.inner {
             VTagInner::Input { .. } => "input",
@@ -409,7 +408,7 @@ impl VTag {
 
     /// Set the given key as property on the element.
     ///
-    /// In the Paws fork this is a placeholder that routes through the
+    /// In the WAMR runtime this is a placeholder that routes through the
     /// attribute path (there is no host-side property setter yet), so
     /// `value` is stringified via [`ToString`] and stored as an `AttrValue`.
     pub fn add_property<V: ToString>(&mut self, key: &'static str, value: V) {
@@ -435,7 +434,7 @@ impl VTag {
         );
     }
 
-    /// Add event listener on the [VTag]'s  [Element](web_sys::Element).
+    /// Add an event listener on the [VTag]'s element.
     /// Returns `true` if the listener has been added, `false` otherwise.
     pub fn add_listener(&mut self, listener: Rc<dyn Listener>) -> bool {
         match &mut self.listeners {
@@ -453,7 +452,7 @@ impl VTag {
         }
     }
 
-    /// Set event listeners on the [VTag]'s  [Element](web_sys::Element)
+    /// Set event listeners on the [VTag]'s element.
     pub fn set_listeners(&mut self, listeners: Box<[Option<Rc<dyn Listener>>]>) {
         self.listeners = Listeners::Pending(listeners);
     }

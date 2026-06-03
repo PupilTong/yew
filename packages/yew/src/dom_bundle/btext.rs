@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use rust_wasm_binding::{Element, NodeOps, Text};
+use rust_wasm_binding::{Element, Text};
 
 use super::{BNode, BSubtree, DomSlot, Reconcilable, ReconcileTarget};
 use crate::html::AnyScope;
@@ -11,7 +11,7 @@ use crate::virtual_dom::{AttrValue, VText};
 /// The bundle implementation to [VText]
 pub(super) struct BText {
     text: AttrValue,
-    /// RAII wrapper for the host-side text node. Dropping destroys it.
+    /// Wrapper for the host-side text node reference.
     text_node: Text,
 }
 
@@ -21,17 +21,13 @@ impl ReconcileTarget for BText {
         let node_id = text_node.id();
 
         if parent_to_detach {
-            // Parent is going away; host will cascade the destroy. Forget
-            // the wrapper to avoid double-destroying the already-removed
-            // slab entry.
+            // Parent is going away; detach bookkeeping is enough here.
             let _ = text_node.into_raw();
         } else {
-            // Physically detach from parent. Drop (below) will destroy
-            // the slab entry.
+            // Physically detach from parent.
             if let Err(err) = rust_wasm_binding::remove_child(parent.id(), node_id) {
                 tracing::warn!(?err, "Node not found to remove VText");
             }
-            // text_node dropped here → destroy_element
         }
     }
 
@@ -86,10 +82,9 @@ impl Reconcilable for VText {
         let Self { text } = self;
         let ancestor_text = std::mem::replace(&mut btext.text, text);
         if btext.text != ancestor_text {
-            btext
-                .text_node
-                .set_node_value(&btext.text)
-                .expect("failed to set text node value");
+            let next_text_node = Text::new(&btext.text).expect("failed to create text node");
+            rust_wasm_binding::raw::replace_element(next_text_node.id(), btext.text_node.id());
+            btext.text_node = next_text_node;
         }
         DomSlot::at(btext.text_node.id())
     }

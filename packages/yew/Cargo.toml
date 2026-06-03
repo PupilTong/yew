@@ -10,23 +10,22 @@ repository = "https://github.com/yewstack/yew"
 homepage = "https://yew.rs"
 documentation = "https://docs.rs/yew/"
 license = "MIT OR Apache-2.0"
-keywords = ["web", "webasm", "javascript"]
-categories = ["gui", "wasm", "web-programming"]
+keywords = ["web", "webasm", "wasi"]
+categories = ["gui", "wasm"]
 description = "A framework for creating reliable and efficient web applications"
 readme = "../../README.md"
 rust-version = "1.84.0"
 
 [dependencies]
 indexmap = { version = "2.13", features = ["std"] }
-rust-wasm-binding = { path = "../../../rust-wasm-binding", default-features = false }
+rust-wasm-binding = { path = "../rust-wasm-binding", default-features = false }
 slab = "0.4"
 yew-macro = { version = "^0.23.0", path = "../yew-macro" }
 thiserror.workspace = true
-futures = { workspace = true, features = ["std"] }
+futures = { workspace = true, features = ["std", "executor"] }
 implicit-clone = { workspace = true, features = ["map"] }
 serde = { workspace = true, features = ["derive"] }
 tracing = "0.1.44"
-tokise = "0.2.0"
 rustversion.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

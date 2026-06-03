@@ -5,17 +5,16 @@
 
 //! # Yew Framework - API Documentation
 //!
-//! Yew is a modern Rust framework for creating multi-threaded front-end web apps using WebAssembly
+//! Yew is a Rust framework for creating WAMR-hosted front-end apps using WebAssembly.
 //!
 //! - Features a macro for declaring interactive HTML with Rust expressions. Developers who have
 //!   experience using JSX in React should feel quite at home when using Yew.
 //! - Achieves high performance by minimizing DOM API calls for each page render and by making it
 //!   easy to offload processing to background web workers.
-//! - Supports JavaScript interoperability, allowing developers to leverage NPM packages and
-//!   integrate with existing JavaScript applications.
+//! - Uses WAMR host functions for runtime integration instead of browser bindings.
 //!
 //! ### Supported Targets (Client-Side Rendering)
-//! - `wasm32-unknown-unknown`
+//! - `wasm32-wasip1`
 //!
 //! ### Supported Features:
 //! - `csr`: Enables Client-side Rendering support and [`Renderer`]. Only enable this feature if you
@@ -285,11 +284,9 @@ mod renderer;
 
 /// The module that contains all events available in the framework.
 ///
-/// In the Paws fork the event payload is the unit type `()` — there is no
-/// JS engine, so `web_sys::MouseEvent` / `KeyboardEvent` / etc. do not exist.
-/// Closures that need to query event state should call the
-/// `rust_wasm_binding::event_*` helpers during dispatch (they read the
-/// currently-dispatching event from the host).
+/// Event payloads are unit values. Closures that need to query event state
+/// should call the `rust_wasm_binding::event_*` helpers during dispatch (they
+/// read the currently-dispatching event from the host).
 pub mod events {
     /// All event payloads share this type.
     pub type Event = ();

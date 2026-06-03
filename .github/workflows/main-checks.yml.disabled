@@ -28,25 +28,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # for wasm-bindgen-cli, always use stable rust
-      - name: Setup toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: stable
-
       - name: Setup toolchain
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly
-          targets: wasm32-unknown-unknown
+          targets: wasm32-wasip1
 
       - uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/master' }}
-
-      - name: Install wasm-bindgen-cli
-        shell: bash
-        run: ./ci/install-wasm-bindgen-cli.sh
 
       - uses: browser-actions/setup-geckodriver@latest
         with:
@@ -60,7 +50,7 @@ jobs:
               -p {} \
               --doc \
               --all-features \
-              --target wasm32-unknown-unknown
+              --target wasm32-wasip1
 
   integration_tests:
     name: Integration Tests on ${{ matrix.toolchain }}
@@ -76,25 +66,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # for wasm-bindgen-cli, always use stable rust
-      - name: Setup toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: stable
-
       - name: Setup toolchain
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.toolchain }}
-          targets: wasm32-unknown-unknown
+          targets: wasm32-wasip1
 
       - uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/master' }}
-
-      - name: Install wasm-bindgen-cli
-        shell: bash
-        run: ./ci/install-wasm-bindgen-cli.sh
 
       - uses: browser-actions/setup-geckodriver@latest
         with:
@@ -105,14 +85,14 @@ jobs:
       - name: Run tests - yew
         run: |
           cd packages/yew
-          CHROMEDRIVER=$(which chromedriver) cargo test --features csr,hydration,ssr,test --target wasm32-unknown-unknown
-          GECKODRIVER=$(which geckodriver) cargo test --features csr,hydration,ssr,test --target wasm32-unknown-unknown
+          CHROMEDRIVER=$(which chromedriver) cargo test --features csr,hydration,ssr,test --target wasm32-wasip1
+          GECKODRIVER=$(which geckodriver) cargo test --features csr,hydration,ssr,test --target wasm32-wasip1
 
       - name: Run tests - yew-router
         run: |
           cd packages/yew-router
-          CHROMEDRIVER=$(which chromedriver) cargo test --target wasm32-unknown-unknown
-          GECKODRIVER=$(which geckodriver) cargo test --target wasm32-unknown-unknown
+          CHROMEDRIVER=$(which chromedriver) cargo test --target wasm32-wasip1
+          GECKODRIVER=$(which geckodriver) cargo test --target wasm32-wasip1
 
   unit_tests:
     name: Unit Tests on ${{ matrix.toolchain }}
@@ -315,15 +295,11 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
-          targets: wasm32-unknown-unknown
+          targets: wasm32-wasip1
 
       - uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/master' }}
-
-      - name: Install wasm-bindgen-cli
-        shell: bash
-        run: ./ci/install-wasm-bindgen-cli.sh
 
       - name: Install trunk
         uses: jetli/trunk-action@v0.5.1
@@ -341,4 +317,4 @@ jobs:
             --server-cmd "cargo run -p ${{ matrix.example }} --bin ${{ matrix.server_bin }} --features ssr -- --dir ${{ matrix.trunk_dir }}/dist" \
             --health-url http://127.0.0.1:8080/ \
             --test-pkg ${{ matrix.example }} \
-            -- --target wasm32-unknown-unknown --test e2e
+            -- --target wasm32-wasip1 --test e2e

@@ -299,7 +299,7 @@ impl ToTokens for HtmlElement {
                     };
                     let v = match directive {
                         Some(PropDirective::ApplyAsProperty(token)) => {
-                            // Paws fork: no host-side set_property yet, so
+                            // WAMR host: no host-side set_property yet, so
                             // route through set_attribute on the stringified
                             // form. The `~prop_name = …` syntax is still
                             // accepted for source-level parity with upstream.
@@ -326,7 +326,7 @@ impl ToTokens for HtmlElement {
                 let values = attrs.iter().map(|(_, v, directive)| {
                     let value = match directive {
                         Some(PropDirective::ApplyAsProperty(token)) => {
-                            // Paws fork: collapsed into Attribute, see above.
+                            // WAMR host: collapsed into Attribute, see above.
                             quote_spanned!(token.span()=> ::std::option::Option::Some(
                                 ::yew::virtual_dom::AttributeOrProperty::Attribute(
                                     ::yew::virtual_dom::AttrValue::from(

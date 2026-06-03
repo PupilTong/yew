@@ -3,7 +3,7 @@
 use std::fmt;
 use std::rc::Rc;
 
-use rust_wasm_binding::{Element, NodeOps};
+use rust_wasm_binding::Element;
 
 use super::{BComp, BList, BPortal, BSubtree, BSuspense, BTag, BText, DomSlot};
 use crate::dom_bundle::{Reconcilable, ReconcileTarget};
@@ -24,9 +24,8 @@ pub(super) enum BNode {
     /// A portal to another part of the document
     Portal(BPortal),
     /// A holder for a raw, user-supplied DOM element node. The wrapper is
-    /// shared via `Rc` so the bundle does not own the underlying slab id —
-    /// the user code that constructed the [`VNode::VRef`] keeps its own
-    /// clone.
+    /// shared via `Rc`; the user code that constructed the [`VNode::VRef`]
+    /// keeps its own clone.
     Ref(Rc<Element>),
     /// A suspendible document fragment.
     Suspense(Box<BSuspense>),
@@ -176,8 +175,9 @@ impl Reconcilable for VNode {
                 bundle,
             ),
             VNode::VRef(node) => match bundle {
-                // Compare by slab id (identity). Two distinct `Rc<Element>`s
-                // pointing at the same id should be treated as the same node.
+                // Compare by host reference identity. Two distinct
+                // `Rc<Element>`s pointing at the same host node should be
+                // treated as the same node.
                 BNode::Ref(existing)
                     if Rc::ptr_eq(&node, existing) || node.id() == existing.id() =>
                 {
@@ -252,7 +252,7 @@ impl fmt::Debug for BNode {
             Self::Text(ref btext) => btext.fmt(f),
             Self::Comp(ref bsusp) => bsusp.fmt(f),
             Self::List(ref vlist) => vlist.fmt(f),
-            Self::Ref(ref vref) => write!(f, "VRef({})", vref.id()),
+            Self::Ref(ref vref) => write!(f, "VRef({:?})", vref.id()),
             Self::Portal(ref vportal) => vportal.fmt(f),
             Self::Suspense(ref bsusp) => bsusp.fmt(f),
         }

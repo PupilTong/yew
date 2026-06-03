@@ -52,23 +52,18 @@ impl<T: fmt::Debug> fmt::Debug for UseFutureHandle<T> {
 /// ```ignore
 /// # use yew::prelude::*;
 /// # use yew::suspense::use_future;
-/// use gloo::net::http::Request;
-///
-/// const URL: &str = "https://en.wikipedia.org/w/api.php?\
-///                    action=query&origin=*&format=json&generator=search&\
-///                    gsrnamespace=0&gsrlimit=5&gsrsearch='New_England_Patriots'";
+/// use yew::platform::time::sleep;
 ///
 /// #[component]
-/// fn WikipediaSearch() -> HtmlResult {
-///     let res = use_future(|| async { Request::get(URL).send().await?.text().await })?;
-///     let result_html = match *res {
-///         Ok(ref res) => html! { res },
-///         Err(ref failure) => failure.to_string().into(),
-///     };
+/// fn AsyncStatus() -> HtmlResult {
+///     let res = use_future(|| async {
+///         sleep(std::time::Duration::from_millis(1)).await;
+///         "ready"
+///     })?;
 ///     Ok(html! {
 ///         <p>
-///             {"Wikipedia search result: "}
-///             {result_html}
+///             {"Result: "}
+///             {*res}
 ///         </p>
 ///     })
 /// }
