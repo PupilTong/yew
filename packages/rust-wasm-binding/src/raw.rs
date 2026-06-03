@@ -195,12 +195,6 @@ mod ffi {
         pub fn create_page() -> ExternRef;
         #[link_name = "__CreateView"]
         pub fn create_view() -> ExternRef;
-        #[link_name = "__CreateList"]
-        pub fn create_list(
-            component_at_index: ExternRef,
-            enqueue_component: ExternRef,
-            extra: ExternRef,
-        ) -> ExternRef;
         #[link_name = "__CreateScrollView"]
         pub fn create_scroll_view() -> ExternRef;
         #[link_name = "__CreateText"]
@@ -578,9 +572,6 @@ mod ffi {
     pub unsafe fn create_view() -> ExternRef {
         ExternRef::null()
     }
-    pub unsafe fn create_list(_: ExternRef, _: ExternRef, _: ExternRef) -> ExternRef {
-        ExternRef::null()
-    }
     pub unsafe fn create_scroll_view() -> ExternRef {
         ExternRef::null()
     }
@@ -924,15 +915,6 @@ create_parent_with_info!(create_view, create_view);
 create_parent_with_info!(create_scroll_view, create_scroll_view);
 create_parent_with_info!(create_text, create_text);
 create_parent_with_info!(create_image, create_image);
-
-/// Calls `__CreateList`.
-pub fn create_list(
-    component_at_index: ExternRef,
-    enqueue_component: ExternRef,
-    extra: ExternRef,
-) -> ExternRef {
-    unsafe { ffi::create_list(component_at_index, enqueue_component, extra) }
-}
 
 /// Calls `__CreateRawText`.
 pub fn create_raw_text(text: &str) -> ExternRef {
