@@ -200,6 +200,23 @@ pub use yew_macro::html;
 /// [`nested_list`]: https://github.com/yewstack/yew/tree/master/examples/nested_list
 /// [`ChildrenRenderer<ListItem>`]: ./html/struct.ChildrenRenderer.html
 pub use yew_macro::html_nested;
+/// Inline an image file as a base64 data URL at compile time.
+///
+/// The path is resolved relative to the current package's `CARGO_MANIFEST_DIR`.
+/// The MIME type is inferred from common image extensions, or can be passed as
+/// the optional second argument.
+///
+/// # Example
+///
+/// ```ignore
+/// # use yew::prelude::*;
+/// const LOGO: &str = inline_image!("assets/logo.png");
+///
+/// html! {
+///     <image src={LOGO} />
+/// };
+/// ```
+pub use yew_macro::inline_image;
 /// Build [`Properties`] outside of the [`html!`] macro.
 ///
 /// It's already possible to create properties like normal Rust structs
@@ -260,7 +277,7 @@ pub use yew_macro::props;
 
 /// This module contains macros which implements html! macro and JSX-like templates
 pub mod macros {
-    pub use crate::{classes, html, html_nested, props};
+    pub use crate::{classes, html, html_nested, inline_image, props};
 }
 
 pub mod callback;
@@ -322,7 +339,7 @@ pub mod prelude {
         BaseComponent, Children, ChildrenWithProps, Classes, Component, Context, Html, HtmlResult,
         NodeRef, Properties,
     };
-    pub use crate::macros::{classes, html, html_nested};
+    pub use crate::macros::{classes, html, html_nested, inline_image};
     pub use crate::suspense::Suspense;
     pub use crate::virtual_dom::AttrValue;
 }
