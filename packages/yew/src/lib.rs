@@ -307,9 +307,6 @@ mod renderer;
 pub mod events {
     /// All event payloads share this type.
     pub type Event = ();
-
-    #[cfg(feature = "csr")]
-    pub use crate::dom_bundle::set_event_bubbling;
 }
 
 #[cfg(feature = "csr")]

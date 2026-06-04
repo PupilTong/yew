@@ -170,13 +170,26 @@ impl Attributes {
             AttributeOrProperty::Attribute(v) => v.as_ref(),
             AttributeOrProperty::Static(v) => v,
         };
-        if let Err(err) = el.set_attribute(key, string_value) {
+
+        let result = if key == "style" {
+            el.set_inline_style(string_value)
+        } else {
+            el.set_attribute(key, string_value)
+        };
+
+        if let Err(err) = result {
             tracing::warn!(?err, el = ?el.id(), key, "failed to set attribute");
         }
     }
 
     fn remove(el: &Element, key: &str, _old_value: &AttributeOrProperty) {
-        if let Err(err) = el.remove_attribute(key) {
+        let result = if key == "style" {
+            el.remove_inline_style()
+        } else {
+            el.remove_attribute(key)
+        };
+
+        if let Err(err) = result {
             tracing::warn!(?err, el = ?el.id(), key, "failed to remove attribute");
         }
     }
