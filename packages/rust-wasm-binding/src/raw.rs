@@ -59,6 +59,13 @@ impl std::fmt::Debug for ExternRef {
     }
 }
 
+/// Guest callback shape used by host timers.
+///
+/// The argument is the native timer id returned by `setTimeout` /
+/// `setInterval`. The host stores only the function-table index and calls it
+/// back through WAMR `call_indirect`.
+pub type TimerCallback = extern "C" fn(i32);
+
 /// Dynamic host value used for copied ABI values and externrefs.
 #[derive(Debug, Clone, Copy)]
 pub enum HostValue<'a> {
@@ -185,7 +192,7 @@ macro_rules! any_args {
 
 #[cfg(target_arch = "wasm32")]
 mod ffi {
-    use super::{ExternRef, HostValueAbiOut};
+    use super::{ExternRef, HostValueAbiOut, TimerCallback};
 
     #[link(wasm_import_module = "env")]
     extern "C" {
@@ -535,11 +542,11 @@ mod ffi {
             out_string_max_len: i32,
         ) -> ExternRef;
         #[link_name = "setTimeout"]
-        pub fn set_timeout(callback: ExternRef, delay_ms: i64) -> i64;
+        pub fn set_timeout(callback: TimerCallback, delay_ms: i64) -> i64;
         #[link_name = "clearTimeout"]
         pub fn clear_timeout(timer_id: i64);
         #[link_name = "setInterval"]
-        pub fn set_interval(callback: ExternRef, delay_ms: i64) -> i64;
+        pub fn set_interval(callback: TimerCallback, delay_ms: i64) -> i64;
         #[link_name = "clearInterval"]
         pub fn clear_interval(timer_id: i64);
     }
@@ -548,7 +555,7 @@ mod ffi {
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(clippy::too_many_arguments)]
 mod ffi {
-    use super::{ExternRef, HostValueAbiOut};
+    use super::{ExternRef, HostValueAbiOut, TimerCallback};
 
     pub unsafe fn create_element(_: i32, _: i32) -> ExternRef {
         ExternRef::null()
@@ -856,11 +863,11 @@ mod ffi {
     ) -> ExternRef {
         ExternRef::null()
     }
-    pub unsafe fn set_timeout(_: ExternRef, _: i64) -> i64 {
+    pub unsafe fn set_timeout(_: TimerCallback, _: i64) -> i64 {
         0
     }
     pub unsafe fn clear_timeout(_: i64) {}
-    pub unsafe fn set_interval(_: ExternRef, _: i64) -> i64 {
+    pub unsafe fn set_interval(_: TimerCallback, _: i64) -> i64 {
         0
     }
     pub unsafe fn clear_interval(_: i64) {}
@@ -1336,7 +1343,7 @@ pub fn get_computed_style_by_key(element: ExternRef, key: &str) -> HostValueOut 
 }
 
 /// Calls `setTimeout`.
-pub fn set_timeout(callback: ExternRef, delay_ms: i64) -> i64 {
+pub fn set_timeout(callback: TimerCallback, delay_ms: i64) -> i64 {
     unsafe { ffi::set_timeout(callback, delay_ms) }
 }
 
@@ -1346,7 +1353,7 @@ pub fn clear_timeout(timer_id: i64) {
 }
 
 /// Calls `setInterval`.
-pub fn set_interval(callback: ExternRef, delay_ms: i64) -> i64 {
+pub fn set_interval(callback: TimerCallback, delay_ms: i64) -> i64 {
     unsafe { ffi::set_interval(callback, delay_ms) }
 }
 

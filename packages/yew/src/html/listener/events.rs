@@ -140,6 +140,7 @@ impl_active! {
     onstalled
     onsubmit
     onsuspend
+    ontap
     ontimeupdate
     ontoggle
     onvolumechange

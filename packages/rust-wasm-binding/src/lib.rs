@@ -5,6 +5,8 @@
 //! [`ExternRef`] and carried directly by wrapper structs.
 
 use std::borrow::Cow;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 pub mod raw;
@@ -361,6 +363,75 @@ pub fn commit() -> Result<()> {
     Ok(())
 }
 
+/// Host timer id.
+pub type TimerId = i64;
+
+enum TimerCallbackEntry {
+    Timeout(Box<dyn FnOnce()>),
+    Interval(Box<dyn FnMut()>),
+}
+
+#[derive(Default)]
+struct TimerCallbacks {
+    entries: HashMap<TimerId, TimerCallbackEntry>,
+    canceled_while_running: HashSet<TimerId>,
+}
+
+thread_local! {
+    static TIMER_CALLBACKS: RefCell<TimerCallbacks> = RefCell::new(TimerCallbacks::default());
+}
+
+extern "C" fn timer_callback_trampoline(timer_id: i32) {
+    let timer_id = TimerId::from(timer_id as u32);
+    let entry = TIMER_CALLBACKS.with(|callbacks| callbacks.borrow_mut().entries.remove(&timer_id));
+
+    match entry {
+        Some(TimerCallbackEntry::Timeout(callback)) => {
+            callback();
+            TIMER_CALLBACKS.with(|callbacks| {
+                callbacks
+                    .borrow_mut()
+                    .canceled_while_running
+                    .remove(&timer_id);
+            });
+        }
+        Some(TimerCallbackEntry::Interval(mut callback)) => {
+            callback();
+            TIMER_CALLBACKS.with(|callbacks| {
+                let mut callbacks = callbacks.borrow_mut();
+                if callbacks.canceled_while_running.remove(&timer_id) {
+                    return;
+                }
+                callbacks
+                    .entries
+                    .insert(timer_id, TimerCallbackEntry::Interval(callback));
+            });
+        }
+        None => {}
+    }
+}
+
+fn insert_timer_callback(timer_id: TimerId, callback: TimerCallbackEntry) {
+    if timer_id <= 0 {
+        return;
+    }
+    TIMER_CALLBACKS.with(|callbacks| {
+        callbacks.borrow_mut().entries.insert(timer_id, callback);
+    });
+}
+
+fn remove_timer_callback(timer_id: TimerId) {
+    if timer_id <= 0 {
+        return;
+    }
+    TIMER_CALLBACKS.with(|callbacks| {
+        let mut callbacks = callbacks.borrow_mut();
+        if callbacks.entries.remove(&timer_id).is_none() {
+            callbacks.canceled_while_running.insert(timer_id);
+        }
+    });
+}
+
 /// Event listener options.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct EventListenerOptions {
@@ -438,23 +509,29 @@ pub fn invoke_ui_method(
 }
 
 /// Creates a timeout.
-pub fn set_timeout(callback: ExternRef, delay_ms: i64) -> i64 {
-    raw::set_timeout(callback, delay_ms)
+pub fn set_timeout(callback: impl FnOnce() + 'static, delay_ms: i64) -> TimerId {
+    let timer_id = raw::set_timeout(timer_callback_trampoline, delay_ms);
+    insert_timer_callback(timer_id, TimerCallbackEntry::Timeout(Box::new(callback)));
+    timer_id
 }
 
 /// Clears a timeout.
-pub fn clear_timeout(timer_id: i64) {
+pub fn clear_timeout(timer_id: TimerId) {
     raw::clear_timeout(timer_id);
+    remove_timer_callback(timer_id);
 }
 
 /// Creates an interval.
-pub fn set_interval(callback: ExternRef, delay_ms: i64) -> i64 {
-    raw::set_interval(callback, delay_ms)
+pub fn set_interval(callback: impl FnMut() + 'static, delay_ms: i64) -> TimerId {
+    let timer_id = raw::set_interval(timer_callback_trampoline, delay_ms);
+    insert_timer_callback(timer_id, TimerCallbackEntry::Interval(Box::new(callback)));
+    timer_id
 }
 
 /// Clears an interval.
-pub fn clear_interval(timer_id: i64) {
+pub fn clear_interval(timer_id: TimerId) {
     raw::clear_interval(timer_id);
+    remove_timer_callback(timer_id);
 }
 
 /// Convenience conversion from a raw host reference.
