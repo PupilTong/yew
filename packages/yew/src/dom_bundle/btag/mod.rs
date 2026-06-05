@@ -80,10 +80,6 @@ impl ReconcileTarget for BTag {
         listeners.unregister(root);
         let node_id = reference.id();
 
-        // Remove subtree branding and cached keys so stale entries don't
-        // misroute future events.
-        root.unbrand_element(node_id);
-
         // Recursively detach children FIRST so listeners are cleaned up
         // before the host-side cascade.
         if let BTagInner::Other { child_bundle, .. } = inner {

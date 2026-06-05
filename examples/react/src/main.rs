@@ -1,14 +1,13 @@
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::time::Duration;
 use std::{fmt::Write as _, mem};
 
-use rust_wasm_binding::{raw, Element};
-use yew::platform::time::sleep;
+use rust_wasm_binding::{raw, Element, TimerId};
 use yew::prelude::*;
 
 const ARROW: &str = inline_image!("assets/arrow.png");
 const LYNX_LOGO: &str = inline_image!("assets/lynx-logo.png");
-const REACT_LOGO: &str = inline_image!("assets/react-logo.png");
+const YEW_LOGO: &str = inline_image!("assets/yew-logo.png");
 
 const GRAVITY: f64 = 0.6;
 const JUMP_FORCE: f64 = -12.0;
@@ -18,28 +17,28 @@ const FRAME_MS: u64 = 16;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Logo {
     Lynx,
-    React,
+    Yew,
 }
 
 impl Logo {
     const fn source(self) -> &'static str {
         match self {
             Self::Lynx => LYNX_LOGO,
-            Self::React => REACT_LOGO,
+            Self::Yew => YEW_LOGO,
         }
     }
 
     const fn style(self) -> &'static str {
         match self {
             Self::Lynx => style::LOGO_LYNX,
-            Self::React => style::LOGO_REACT,
+            Self::Yew => style::LOGO_YEW,
         }
     }
 
     const fn toggled(self) -> Self {
         match self {
-            Self::Lynx => Self::React,
-            Self::React => Self::Lynx,
+            Self::Lynx => Self::Yew,
+            Self::Yew => Self::Lynx,
         }
     }
 }
@@ -50,114 +49,156 @@ impl Default for Logo {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-struct Flappy {
+#[derive(Debug, Default)]
+struct FlappyEngine {
     y: f64,
     velocity: f64,
+    timer_id: Option<TimerId>,
 }
 
-impl Flappy {
-    fn jump(mut self) -> Self {
+impl FlappyEngine {
+    fn jump(&mut self) -> Option<f64> {
         self.velocity = (self.velocity + JUMP_FORCE * STACK_FACTOR).max(JUMP_FORCE);
-        self.tick()
+        if self.timer_id.is_some() {
+            None
+        } else {
+            Some(self.tick())
+        }
     }
 
-    fn tick(mut self) -> Self {
+    fn tick(&mut self) -> f64 {
         self.velocity += GRAVITY;
         self.y += self.velocity;
 
         if self.y >= 0.0 {
-            Self::default()
-        } else {
-            self
+            self.y = 0.0;
+            self.velocity = 0.0;
         }
+
+        self.y
     }
 
-    fn logo_style(self) -> String {
-        let mut style = String::with_capacity(style::LOGO.len() + 32);
-        style.push_str(style::LOGO);
-        let _ = write!(style, " transform: translateY({:.2}px);", self.y);
-        style
+    fn is_airborne(&self) -> bool {
+        self.y < 0.0
+    }
+
+    fn set_timer(&mut self, timer_id: TimerId) {
+        self.timer_id = Some(timer_id);
+    }
+
+    fn clear_timer(&mut self) -> Option<TimerId> {
+        self.timer_id.take()
     }
 }
 
-#[derive(Debug, Default)]
-struct App {
-    logo: Logo,
-    flappy: Flappy,
-}
-
-enum Msg {
-    Jump,
-    ToggleLogo,
-    Tick,
-}
-
-impl Component for App {
-    type Message = Msg;
-    type Properties = ();
-
-    fn create(ctx: &Context<Self>) -> Self {
-        println!("Hello, ReactLynx");
-        Self::schedule_tick(ctx);
-        Self::default()
+fn schedule_flappy_frame(
+    engine: Rc<RefCell<FlappyEngine>>,
+    logo_y: UseStateHandle<f64>,
+    alive: Rc<Cell<bool>>,
+) {
+    if engine.borrow().timer_id.is_some() {
+        return;
     }
 
-    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
-        match msg {
-            Msg::Jump => {
-                self.flappy = self.flappy.jump();
-                true
+    let callback_engine = engine.clone();
+    let callback_logo_y = logo_y.clone();
+    let callback_alive = alive.clone();
+    let timer_id = rust_wasm_binding::set_timeout(
+        move || {
+            if !callback_alive.get() {
+                callback_engine.borrow_mut().clear_timer();
+                return;
             }
-            Msg::ToggleLogo => {
-                self.logo = self.logo.toggled();
-                true
-            }
-            Msg::Tick => {
-                self.flappy = self.flappy.tick();
-                Self::schedule_tick(ctx);
-                true
-            }
-        }
-    }
 
-    fn view(&self, ctx: &Context<Self>) -> Html {
-        let jump = ctx.link().callback(|_| Msg::Jump);
-        let toggle_logo = ctx.link().callback(|_| Msg::ToggleLogo);
+            let (next_y, should_continue) = {
+                let mut engine = callback_engine.borrow_mut();
+                engine.clear_timer();
+                let next_y = engine.tick();
+                (next_y, engine.is_airborne())
+            };
+            callback_logo_y.set(next_y);
 
-        html! {
-            <view style={style::PAGE} ontap={jump}>
-                <view style={style::BACKGROUND} />
-                <view style={style::APP}>
-                    <view style={style::BANNER}>
-                        <view style={self.flappy.logo_style()} ontap={toggle_logo}>
-                            <image src={self.logo.source()} style={self.logo.style()} />
-                        </view>
-                        <text style={style::TITLE}>{ "React" }</text>
-                        <text style={style::SUBTITLE}>{ "on Lynx" }</text>
-                    </view>
-                    <view style={style::CONTENT}>
-                        <image src={ARROW} style={style::ARROW} />
-                        <text style={style::DESCRIPTION}>{ "Tap the logo and have fun!" }</text>
-                        <text style={style::HINT}>
-                            { "Edit" }
-                            <text style={style::HINT_EMPHASIS}>{ " src/main.rs " }</text>
-                            { "to see updates!" }
-                        </text>
-                    </view>
-                    <view style={style::FILLER} />
-                </view>
-            </view>
-        }
-    }
+            if should_continue {
+                schedule_flappy_frame(callback_engine, callback_logo_y, callback_alive);
+            }
+        },
+        FRAME_MS as i64,
+    );
+    engine.borrow_mut().set_timer(timer_id);
 }
 
-impl App {
-    fn schedule_tick(ctx: &Context<Self>) {
-        ctx.link().send_future(async {
-            sleep(Duration::from_millis(FRAME_MS)).await;
-            Msg::Tick
+fn logo_style(y: f64) -> String {
+    let mut style = String::with_capacity(style::LOGO.len() + 32);
+    style.push_str(style::LOGO);
+    let _ = write!(style, " transform: translateY({:.2}px);", y);
+    style
+}
+
+#[function_component(App)]
+fn app() -> Html {
+    let logo = use_state(Logo::default);
+    let logo_y = use_state(|| 0.0);
+    let flappy = use_mut_ref(FlappyEngine::default);
+    let alive = use_mut_ref(|| Rc::new(Cell::new(true)));
+
+    {
+        let alive = alive.clone();
+        let flappy = flappy.clone();
+        use_effect_with((), move |_| {
+            move || {
+                alive.borrow().set(false);
+                if let Some(timer_id) = flappy.borrow_mut().clear_timer() {
+                    rust_wasm_binding::clear_timeout(timer_id);
+                }
+            }
         });
+    }
+
+    let play = {
+        let flappy = flappy.clone();
+        let logo = logo.clone();
+        let logo_y = logo_y.clone();
+        let alive = alive.borrow().clone();
+        Callback::from(move |_| {
+            logo.set((*logo).toggled());
+            let immediate_y = flappy.borrow_mut().jump();
+            if let Some(next_y) = immediate_y {
+                logo_y.set(next_y);
+                if flappy.borrow().is_airborne() {
+                    schedule_flappy_frame(flappy.clone(), logo_y.clone(), alive.clone());
+                }
+            }
+        })
+    };
+    let logo_value = *logo;
+    let logo_style = logo_style(*logo_y);
+
+    html! {
+        <view style={style::PAGE} ontap={play}>
+            <view style={style::BACKGROUND} />
+            <view style={style::APP}>
+                <view style={style::BANNER}>
+                    <view style={logo_style}>
+                        <image
+                            src={logo_value.source()}
+                            style={logo_value.style()}
+                        />
+                    </view>
+                    <text style={style::TITLE}>{ "Yew" }</text>
+                    <text style={style::SUBTITLE}>{ "on Lynx" }</text>
+                </view>
+                <view style={style::CONTENT}>
+                    <image src={ARROW} style={style::ARROW} />
+                    <text style={style::DESCRIPTION}>{ "Tap the logo and have fun!" }</text>
+                    <text style={style::HINT}>
+                        { "Edit" }
+                        <text style={style::HINT_EMPHASIS}>{ " src/main.rs " }</text>
+                        { "to see updates!" }
+                    </text>
+                </view>
+                <view style={style::FILLER} />
+            </view>
+        </view>
     }
 }
 
@@ -223,7 +264,7 @@ mod style {
         "justify-content: center;",
         "margin-bottom: 8px;"
     );
-    pub const LOGO_REACT: &str = "width: 100px; height: 100px;";
+    pub const LOGO_YEW: &str = "width: 100px; height: 100px;";
     pub const LOGO_LYNX: &str = "width: 100px; height: 100px;";
     pub const CONTENT: &str = concat!(
         "display: flex;",

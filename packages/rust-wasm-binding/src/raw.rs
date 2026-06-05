@@ -66,6 +66,12 @@ impl std::fmt::Debug for ExternRef {
 /// back through WAMR `call_indirect`.
 pub type TimerCallback = extern "C" fn(i32);
 
+/// Guest callback shape used by host-dispatched events.
+///
+/// The first argument is a guest-side listener id, and the second argument is
+/// the host event target wrapped as an `externref` table index.
+pub type EventCallback = extern "C" fn(i32, ExternRef);
+
 /// Dynamic host value used for copied ABI values and externrefs.
 #[derive(Debug, Clone, Copy)]
 pub enum HostValue<'a> {
@@ -192,7 +198,7 @@ macro_rules! any_args {
 
 #[cfg(target_arch = "wasm32")]
 mod ffi {
-    use super::{ExternRef, HostValueAbiOut, TimerCallback};
+    use super::{EventCallback, ExternRef, HostValueAbiOut, TimerCallback};
 
     #[link(wasm_import_module = "env")]
     extern "C" {
@@ -379,18 +385,7 @@ mod ffi {
         #[link_name = "__GetDataset"]
         pub fn get_dataset(element: ExternRef) -> ExternRef;
         #[link_name = "__FlushElementTree"]
-        pub fn flush_element_tree(
-            root_kind: i32,
-            root_number: f64,
-            root_string_ptr: i32,
-            root_string_len: i32,
-            root_ref: ExternRef,
-            options_kind: i32,
-            options_number: f64,
-            options_string_ptr: i32,
-            options_string_len: i32,
-            options_ref: ExternRef,
-        );
+        pub fn flush_element_tree();
         #[link_name = "_ReportError"]
         pub fn report_error(
             error_kind: i32,
@@ -499,16 +494,18 @@ mod ffi {
             element: ExternRef,
             event_type_ptr: i32,
             event_type_len: i32,
-            listener: ExternRef,
-            options: ExternRef,
+            listener: EventCallback,
+            listener_id: i32,
+            passive: i32,
         );
         #[link_name = "__RemoveEventListener"]
         pub fn remove_event_listener(
             element: ExternRef,
             event_type_ptr: i32,
             event_type_len: i32,
-            listener: ExternRef,
-            options: ExternRef,
+            listener: EventCallback,
+            listener_id: i32,
+            passive: i32,
         );
         #[link_name = "__CreateEvent"]
         pub fn create_event(
@@ -555,7 +552,7 @@ mod ffi {
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(clippy::too_many_arguments)]
 mod ffi {
-    use super::{ExternRef, HostValueAbiOut, TimerCallback};
+    use super::{EventCallback, ExternRef, HostValueAbiOut, TimerCallback};
 
     pub unsafe fn create_element(_: i32, _: i32) -> ExternRef {
         ExternRef::null()
@@ -725,19 +722,7 @@ mod ffi {
     pub unsafe fn get_dataset(_: ExternRef) -> ExternRef {
         ExternRef::null()
     }
-    pub unsafe fn flush_element_tree(
-        _: i32,
-        _: f64,
-        _: i32,
-        _: i32,
-        _: ExternRef,
-        _: i32,
-        _: f64,
-        _: i32,
-        _: i32,
-        _: ExternRef,
-    ) {
-    }
+    pub unsafe fn flush_element_tree() {}
     pub unsafe fn report_error(
         _: i32,
         _: f64,
@@ -842,8 +827,24 @@ mod ffi {
     pub unsafe fn get_element_by_unique_id(_: i64) -> ExternRef {
         ExternRef::null()
     }
-    pub unsafe fn add_event_listener(_: ExternRef, _: i32, _: i32, _: ExternRef, _: ExternRef) {}
-    pub unsafe fn remove_event_listener(_: ExternRef, _: i32, _: i32, _: ExternRef, _: ExternRef) {}
+    pub unsafe fn add_event_listener(
+        _: ExternRef,
+        _: i32,
+        _: i32,
+        _: EventCallback,
+        _: i32,
+        _: i32,
+    ) {
+    }
+    pub unsafe fn remove_event_listener(
+        _: ExternRef,
+        _: i32,
+        _: i32,
+        _: EventCallback,
+        _: i32,
+        _: i32,
+    ) {
+    }
     pub unsafe fn create_event(_: i32, _: i32, _: i32, _: ExternRef, _: ExternRef) -> ExternRef {
         ExternRef::null()
     }
@@ -1126,24 +1127,8 @@ pub fn set_dataset(element: ExternRef, value: HostValue<'_>) {
 }
 
 /// Calls `__FlushElementTree`.
-pub fn flush_element_tree(root: HostValue<'_>, options: HostValue<'_>) {
-    let (root_kind, root_number, root_string_ptr, root_string_len, root_ref) = any_args!(root);
-    let (options_kind, options_number, options_string_ptr, options_string_len, options_ref) =
-        any_args!(options);
-    unsafe {
-        ffi::flush_element_tree(
-            root_kind,
-            root_number,
-            root_string_ptr,
-            root_string_len,
-            root_ref,
-            options_kind,
-            options_number,
-            options_string_ptr,
-            options_string_len,
-            options_ref,
-        )
-    }
+pub fn flush_element_tree() {
+    unsafe { ffi::flush_element_tree() }
 }
 
 /// Calls `_ReportError`.
@@ -1282,23 +1267,41 @@ pub fn get_element_by_unique_id(unique_id: i64) -> ExternRef {
 pub fn add_event_listener(
     element: ExternRef,
     event_type: &str,
-    listener: ExternRef,
-    options: ExternRef,
+    listener: EventCallback,
+    listener_id: i32,
+    passive: bool,
 ) {
     let (event_type_ptr, event_type_len) = string_parts(event_type);
-    unsafe { ffi::add_event_listener(element, event_type_ptr, event_type_len, listener, options) }
+    unsafe {
+        ffi::add_event_listener(
+            element,
+            event_type_ptr,
+            event_type_len,
+            listener,
+            listener_id,
+            passive as i32,
+        )
+    }
 }
 
 /// Calls `__RemoveEventListener`.
 pub fn remove_event_listener(
     element: ExternRef,
     event_type: &str,
-    listener: ExternRef,
-    options: ExternRef,
+    listener: EventCallback,
+    listener_id: i32,
+    passive: bool,
 ) {
     let (event_type_ptr, event_type_len) = string_parts(event_type);
     unsafe {
-        ffi::remove_event_listener(element, event_type_ptr, event_type_len, listener, options)
+        ffi::remove_event_listener(
+            element,
+            event_type_ptr,
+            event_type_len,
+            listener,
+            listener_id,
+            passive as i32,
+        )
     }
 }
 

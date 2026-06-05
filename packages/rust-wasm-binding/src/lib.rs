@@ -11,7 +11,7 @@ use std::fmt;
 
 pub mod raw;
 
-pub use raw::{ExternRef, HostValue, HostValueKind, HostValueOut};
+pub use raw::{EventCallback, ExternRef, HostValue, HostValueKind, HostValueOut};
 
 /// Error returned by binding convenience wrappers.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -281,6 +281,12 @@ pub trait ElementOps {
 
     /// Removes an attribute by writing a copied `null` value.
     fn remove_attribute(&self, key: &str) -> Result<()>;
+
+    /// Replaces the element's raw inline style declaration list.
+    fn set_inline_style(&self, value: &str) -> Result<()>;
+
+    /// Clears all raw inline styles from the element.
+    fn remove_inline_style(&self) -> Result<()>;
 }
 
 impl ElementOps for Element {
@@ -291,6 +297,16 @@ impl ElementOps for Element {
 
     fn remove_attribute(&self, key: &str) -> Result<()> {
         raw::set_attribute(self.raw, HostValue::String(key), HostValue::Null);
+        Ok(())
+    }
+
+    fn set_inline_style(&self, value: &str) -> Result<()> {
+        raw::set_inline_styles(self.raw, HostValue::String(value));
+        Ok(())
+    }
+
+    fn remove_inline_style(&self) -> Result<()> {
+        raw::set_inline_styles(self.raw, HostValue::String(""));
         Ok(())
     }
 }
@@ -359,7 +375,7 @@ pub fn get_namespace_uri(node: ExternRef) -> Result<Option<String>> {
 
 /// Flushes pending element tree changes.
 pub fn commit() -> Result<()> {
-    raw::flush_element_tree(HostValue::Null, HostValue::Null);
+    raw::flush_element_tree();
     Ok(())
 }
 
@@ -469,10 +485,11 @@ impl EventListenerOptions {
 pub fn add_event_listener(
     element: ExternRef,
     event_type: &str,
-    callback: ExternRef,
-    _options: EventListenerOptions,
+    callback: EventCallback,
+    listener_id: i32,
+    options: EventListenerOptions,
 ) -> Result<()> {
-    raw::add_event_listener(element, event_type, callback, ExternRef::null());
+    raw::add_event_listener(element, event_type, callback, listener_id, options.passive);
     Ok(())
 }
 
@@ -480,10 +497,11 @@ pub fn add_event_listener(
 pub fn remove_event_listener(
     element: ExternRef,
     event_type: &str,
-    callback: ExternRef,
-    _capture: bool,
+    callback: EventCallback,
+    listener_id: i32,
+    options: EventListenerOptions,
 ) -> Result<()> {
-    raw::remove_event_listener(element, event_type, callback, ExternRef::null());
+    raw::remove_event_listener(element, event_type, callback, listener_id, options.passive);
     Ok(())
 }
 
