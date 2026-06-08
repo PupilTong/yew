@@ -204,7 +204,14 @@ pub(crate) fn start_now() {
         loop {
             with(|s| s.fill_queue(&mut queue));
             if queue.is_empty() {
-                break;
+                // The render/lifecycle queue is drained. Advance any spawned
+                // futures (async messages, resolved suspensions); they may
+                // enqueue fresh work, which the next pass picks up.
+                crate::platform::drive_spawned_tasks();
+                with(|s| s.fill_queue(&mut queue));
+                if queue.is_empty() {
+                    break;
+                }
             }
             for r in queue.drain(..) {
                 r.task.run();

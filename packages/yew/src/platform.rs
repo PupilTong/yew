@@ -16,7 +16,8 @@
 //!
 //! Yew platform provides the following components:
 //!
-//! 1. A task entry point that is capable of running non-Send tasks.
+//! 1. A cooperative single-threaded executor for non-Send tasks, advanced by
+//!    the scheduler rather than a background event loop.
 //! 2. A timer helper that is compatible with the selected runtime.
 //!
 //! # Runtime Backend
@@ -26,16 +27,57 @@
 //! - WAMR and WASI for `wasm32-wasip1`
 //! - standard Rust futures utilities for native test targets
 
+use std::cell::RefCell;
 use std::future::Future;
 
-/// Run a non-Send future on the current thread.
+use futures::executor::{LocalPool, LocalSpawner};
+use futures::task::LocalSpawnExt;
+
+thread_local! {
+    /// Single-threaded executor that owns every future handed to
+    /// [`spawn_local`]. It is advanced cooperatively by the scheduler via
+    /// [`drive_spawned_tasks`], not by a background event loop.
+    static LOCAL_POOL: RefCell<LocalPool> = RefCell::new(LocalPool::new());
+    /// Spawner handle for `LOCAL_POOL`. Kept separate so spawning a task never
+    /// borrows the pool itself, which may be mid-run inside
+    /// [`drive_spawned_tasks`].
+    static SPAWNER: LocalSpawner = LOCAL_POOL.with(|pool| pool.borrow().spawner());
+}
+
+/// Spawn a non-Send future onto the current thread's executor.
 ///
-/// This intentionally does not depend on any browser-oriented async backend.
+/// The future is queued and control returns to the caller immediately — it is
+/// **not** run to completion here. The scheduler drives queued futures forward
+/// after it drains its render/lifecycle work (see [`drive_spawned_tasks`]), so
+/// `spawn_local` keeps the fire-and-forget semantics yew relies on for
+/// `Scope::send_future`, streams, and suspense — without blocking the caller or
+/// depending on a browser / `tokio` backend.
 pub fn spawn_local<F>(future: F)
 where
     F: Future<Output = ()> + 'static,
 {
-    futures::executor::block_on(future);
+    SPAWNER.with(|spawner| {
+        // `spawn_local` only errors once the pool has been dropped, which never
+        // happens for a thread-local that lives as long as the thread.
+        let _ = spawner.spawn_local(future);
+    });
+}
+
+/// Advance every spawned future as far as it can progress without blocking.
+///
+/// Called by the scheduler once its runnable queue is empty. Futures that
+/// resolve here may resume suspensions or send component messages, which the
+/// scheduler then picks up on its next pass. Futures still awaiting an external
+/// wake-up (e.g. a host timer or event) stay parked until the host re-enters
+/// the guest.
+pub(crate) fn drive_spawned_tasks() {
+    LOCAL_POOL.with(|pool| {
+        // Skip if a drive is already in progress on this thread (re-entrancy
+        // guard); the outer drive picks up any newly woken tasks.
+        if let Ok(mut pool) = pool.try_borrow_mut() {
+            pool.run_until_stalled();
+        }
+    });
 }
 
 /// Timer helpers.
