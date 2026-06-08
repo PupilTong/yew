@@ -233,7 +233,7 @@ pub(crate) fn start_now() {
             // the scheduler without a linked `__commit` symbol.
             #[cfg(target_arch = "wasm32")]
             {
-                let _ = rust_wasm_binding::commit();
+                let _ = lynx_sys::commit();
             }
         }
     });
@@ -255,7 +255,7 @@ pub(crate) use arch::*;
 /// driven synchronously. Thin alias for
 /// [`start_now`].
 ///
-/// Call this after [`dispatch_event`](rust_wasm_binding::dispatch_event)
+/// Call this after [`dispatch_event`](lynx_sys::dispatch_event)
 /// in WASM fixtures so that state updates triggered by event callbacks
 /// are re-rendered before `run()` returns.
 pub fn flush() {

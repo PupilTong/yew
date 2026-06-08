@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::ops::Deref;
 use std::rc::Rc;
 
-use rust_wasm_binding::{Element, ExternRef};
+use lynx_sys::{Element, ExternRef};
 
 use super::Apply;
 use crate::dom_bundle::{test_log, BSubtree, EventDescriptor};

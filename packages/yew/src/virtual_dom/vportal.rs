@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use rust_wasm_binding::{Element, ExternRef};
+use lynx_sys::{Element, ExternRef};
 
 use super::VNode;
 

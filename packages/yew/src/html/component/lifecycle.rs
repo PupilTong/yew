@@ -4,7 +4,7 @@ use std::any::Any;
 use std::rc::Rc;
 
 #[cfg(feature = "csr")]
-use rust_wasm_binding::Element;
+use lynx_sys::Element;
 
 use super::scope::{AnyScope, Scope};
 use super::BaseComponent;

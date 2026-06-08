@@ -206,7 +206,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust-wasm-binding"
+name = "lynx_sys"
 version = "0.1.0"
 
 [[package]]
@@ -484,7 +484,7 @@ dependencies = [
  "futures",
  "implicit-clone",
  "indexmap",
- "rust-wasm-binding",
+ "lynx_sys",
  "rustversion",
  "serde",
  "slab",

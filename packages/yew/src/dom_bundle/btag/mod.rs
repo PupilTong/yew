@@ -9,7 +9,7 @@ use std::rc::Rc;
 
 use listeners::ListenerRegistration;
 pub use listeners::Registry;
-use rust_wasm_binding::Element;
+use lynx_sys::Element;
 
 use super::{BNode, BSubtree, DomSlot, Reconcilable, ReconcileTarget};
 use crate::html::AnyScope;
@@ -97,7 +97,7 @@ impl ReconcileTarget for BTag {
             }
         } else {
             // Physically detach from the parent.
-            if let Err(err) = rust_wasm_binding::remove_child(parent.id(), node_id) {
+            if let Err(err) = lynx_sys::remove_child(parent.id(), node_id) {
                 tracing::warn!(?err, "Node not found to remove VTag");
             }
         }
@@ -290,7 +290,7 @@ fn parent_namespace_is(parent: &Element, expected: &str) -> bool {
     // owned `String`; namespace detection never invents SVG context
     // where there isn't one, so missing / erroring values fall through
     // to `false`.
-    match rust_wasm_binding::get_namespace_uri(parent.id()) {
+    match lynx_sys::get_namespace_uri(parent.id()) {
         Ok(Some(uri)) => uri == expected,
         _ => false,
     }

@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use rust_wasm_binding::Element;
+use lynx_sys::Element;
 
 use super::{BNode, BSubtree, DomSlot};
 use crate::html::AnyScope;

@@ -7,7 +7,7 @@ use crate::html::ImplicitClone;
 /// In the WAMR runtime the event payload is a unit type: yew only knows that
 /// "an event of kind X fired on target Y". Event-specific state (target,
 /// phase, modifier keys, etc.) is queried from the host side during dispatch
-/// via the `rust_wasm_binding::event_*` helpers, not threaded through the
+/// via the `lynx_sys::event_*` helpers, not threaded through the
 /// closure signature.
 pub trait Listener {
     /// Returns the name of the event

@@ -7,7 +7,7 @@
 
 use std::rc::Rc;
 
-use rust_wasm_binding::Element;
+use lynx_sys::Element;
 
 use crate::html::AnyScope;
 use crate::virtual_dom::VNode;

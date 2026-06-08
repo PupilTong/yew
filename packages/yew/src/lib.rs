@@ -285,7 +285,7 @@ mod renderer;
 /// The module that contains all events available in the framework.
 ///
 /// Event payloads are unit values. Closures that need to query event state
-/// should call the `rust_wasm_binding::event_*` helpers during dispatch (they
+/// should call the `lynx_sys::event_*` helpers during dispatch (they
 /// read the currently-dispatching event from the host).
 pub mod events {
     /// All event payloads share this type.

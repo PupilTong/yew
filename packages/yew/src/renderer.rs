@@ -3,7 +3,7 @@ use std::panic::PanicHookInfo as PanicInfo;
 use std::rc::Rc;
 
 #[cfg(feature = "csr")]
-use rust_wasm_binding::Element;
+use lynx_sys::Element;
 
 use crate::app_handle::AppHandle;
 use crate::html::BaseComponent;

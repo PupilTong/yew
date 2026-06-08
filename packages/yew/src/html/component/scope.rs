@@ -428,7 +428,7 @@ pub(crate) use feat_csr_ssr::*;
 mod feat_csr {
     use std::cell::Ref;
 
-    use rust_wasm_binding::Element;
+    use lynx_sys::Element;
 
     use super::*;
     use crate::dom_bundle::{BSubtree, Bundle, DomSlot, DynamicDomSlot};

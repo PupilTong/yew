@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "packages/rust-wasm-binding",
+    "packages/lynx_sys",
     "packages/yew",
     "packages/yew-macro",
 ]

@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use rust_wasm_binding::{Element, ExternRef};
+use lynx_sys::{Element, ExternRef};
 
 use super::{test_log, BNode, BSubtree, DomSlot};
 use crate::dom_bundle::{Reconcilable, ReconcileTarget};

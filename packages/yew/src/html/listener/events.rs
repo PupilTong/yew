@@ -2,7 +2,7 @@
 //
 // The event payload is unit (`()`) for every listener kind; closures that need
 // to look at modifier keys, coordinates, or the target element should call
-// `rust_wasm_binding::event_*` helpers during dispatch.
+// `lynx_sys::event_*` helpers during dispatch.
 
 macro_rules! impl_action {
     ($($action:ident($passive:literal))*) => {$(
@@ -36,7 +36,7 @@ macro_rules! impl_action {
             }
 
             /// The event payload. Unit in the WAMR runtime; event details are
-            /// queried from the host via `rust_wasm_binding::event_*`.
+            /// queried from the host via `lynx_sys::event_*`.
             pub type Event = ();
 
             impl Listener for Wrapper {

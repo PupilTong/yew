@@ -14,7 +14,7 @@ pub use component::*;
 pub use conversion::*;
 pub use error::*;
 pub use listener::*;
-use rust_wasm_binding::Element;
+use lynx_sys::Element;
 
 use crate::sealed::Sealed;
 use crate::virtual_dom::VNode;
@@ -53,8 +53,8 @@ impl IntoHtmlResult for Html {
 ///
 /// Stores an `Rc<Element>` handle to the underlying DOM node, giving user
 /// code type-safe access to the element and keeping it alive via shared
-/// ownership. Query element state through the [`rust_wasm_binding::ElementOps`]
-/// / [`rust_wasm_binding::NodeOps`] traits on the returned handle.
+/// ownership. Query element state through the [`lynx_sys::ElementOps`]
+/// / [`lynx_sys::NodeOps`] traits on the returned handle.
 #[derive(Default, Clone, ImplicitClone)]
 pub struct NodeRef(Rc<RefCell<NodeRefInner>>);
 

@@ -3,7 +3,7 @@
 use std::fmt;
 use std::rc::Rc;
 
-use rust_wasm_binding::Element;
+use lynx_sys::Element;
 
 use super::{BComp, BList, BPortal, BSubtree, BSuspense, BTag, BText, DomSlot};
 use crate::dom_bundle::{Reconcilable, ReconcileTarget};
@@ -58,7 +58,7 @@ impl ReconcileTarget for BNode {
                 // Always remove user-defined nodes to clear possible parent references of them.
                 // The `Rc<Element>` is *not* dropped here — the user code that constructed
                 // the [`VNode::VRef`] still holds its own clone of the handle.
-                if rust_wasm_binding::remove_child(parent.id(), node.id()).is_err() {
+                if lynx_sys::remove_child(parent.id(), node.id()).is_err() {
                     tracing::warn!("Node not found to remove VRef");
                 }
             }

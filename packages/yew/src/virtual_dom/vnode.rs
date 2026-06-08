@@ -5,7 +5,7 @@ use std::iter::FromIterator;
 use std::rc::Rc;
 use std::{fmt, mem};
 
-use rust_wasm_binding::Element;
+use lynx_sys::Element;
 
 use super::{Key, VChild, VComp, VList, VPortal, VSuspense, VTag, VText};
 use crate::html::{BaseComponent, ImplicitClone};

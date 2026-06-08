@@ -5,7 +5,7 @@ use std::fmt;
 use std::rc::Rc;
 
 #[cfg(feature = "csr")]
-use rust_wasm_binding::Element;
+use lynx_sys::Element;
 
 use super::Key;
 #[cfg(feature = "csr")]

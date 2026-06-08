@@ -14,7 +14,7 @@
 //!   to DOM nodes.
 //! * `SubtreeData` / `BSubtree` / `ParentingInformation` — the portal bubble-path data model is
 //!   unchanged; walking the tree still uses [`ParentingInformation`] +
-//!   `rust_wasm_binding::get_parent_element`.
+//!   `lynx_sys::get_parent_element`.
 //! * `Registry` (in `btag/listeners.rs`) — still the single source of truth for which handlers are
 //!   attached where; its lookup path is used by `handle()` when a host dispatch arrives.
 
@@ -24,7 +24,7 @@ use std::hash::{Hash, Hasher};
 use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
-use rust_wasm_binding::{Element, ExternRef};
+use lynx_sys::{Element, ExternRef};
 
 use super::{test_log, Registry};
 use crate::virtual_dom::{Listener, ListenerKind};
@@ -252,7 +252,7 @@ pub fn set_event_bubbling(bubble: bool) {
 /// shadow DOM boundaries via `ShadowRoot::host()`; the WAMR binding currently
 /// walks physical parents through the host ABI.
 fn parent_step(el: ExternRef) -> Option<ExternRef> {
-    rust_wasm_binding::get_parent_element(el)
+    lynx_sys::get_parent_element(el)
 }
 
 struct BrandingSearchResult {
@@ -409,7 +409,7 @@ impl SubtreeData {
             for (subtree, el) in bubbling_it {
                 // The host ABI currently exposes prevent-default state but no
                 // dedicated cancel-bubble bit.
-                if rust_wasm_binding::event_default_prevented() {
+                if lynx_sys::event_default_prevented() {
                     break;
                 }
                 run_handler(subtree, el);

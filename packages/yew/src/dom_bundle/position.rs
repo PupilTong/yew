@@ -3,7 +3,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use rust_wasm_binding::{Element, ExternRef};
+use lynx_sys::{Element, ExternRef};
 
 /// A position in the list of children of an implicit parent element.
 ///
@@ -76,7 +76,7 @@ impl DomSlot {
     /// element of the children that this slot is implicitly a part of.
     pub(super) fn insert(&self, parent: &Element, node: ExternRef) {
         self.with_next_sibling(|next_sibling: Option<ExternRef>| {
-            if let Err(err) = rust_wasm_binding::insert_before(parent.id(), node, next_sibling) {
+            if let Err(err) = lynx_sys::insert_before(parent.id(), node, next_sibling) {
                 let msg = if next_sibling.is_some() {
                     "failed to insert node before next sibling"
                 } else {

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 use indexmap::IndexMap;
-use rust_wasm_binding::{Element, ElementOps};
+use lynx_sys::{Element, ElementOps};
 use yew::AttrValue;
 
 use super::Apply;

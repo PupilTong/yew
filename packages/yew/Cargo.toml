@@ -18,7 +18,7 @@ rust-version = "1.84.0"
 
 [dependencies]
 indexmap = { version = "2.13", features = ["std"] }
-rust-wasm-binding = { path = "../rust-wasm-binding", default-features = false }
+lynx_sys = { path = "../lynx_sys", default-features = false }
 slab = "0.4"
 yew-macro = { version = "^0.23.0", path = "../yew-macro" }
 thiserror.workspace = true

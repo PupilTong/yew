@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use rust_wasm_binding::{Element, Text};
+use lynx_sys::{Element, Text};
 
 use super::{BNode, BSubtree, DomSlot, Reconcilable, ReconcileTarget};
 use crate::html::AnyScope;
@@ -25,7 +25,7 @@ impl ReconcileTarget for BText {
             let _ = text_node.into_raw();
         } else {
             // Physically detach from parent.
-            if let Err(err) = rust_wasm_binding::remove_child(parent.id(), node_id) {
+            if let Err(err) = lynx_sys::remove_child(parent.id(), node_id) {
                 tracing::warn!(?err, "Node not found to remove VText");
             }
         }
@@ -83,7 +83,7 @@ impl Reconcilable for VText {
         let ancestor_text = std::mem::replace(&mut btext.text, text);
         if btext.text != ancestor_text {
             let next_text_node = Text::new(&btext.text).expect("failed to create text node");
-            rust_wasm_binding::raw::replace_element(next_text_node.id(), btext.text_node.id());
+            lynx_sys::raw::replace_element(next_text_node.id(), btext.text_node.id());
             btext.text_node = next_text_node;
         }
         DomSlot::at(btext.text_node.id())
