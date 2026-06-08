@@ -186,10 +186,6 @@ impl HookContext {
             drop(state);
         }
     }
-
-    fn prepare_state(&self) -> Option<String> {
-        None
-    }
 }
 
 impl fmt::Debug for HookContext {
@@ -274,12 +270,6 @@ where
     pub fn destroy(&self) {
         let mut hook_ctx = self.hook_ctx.borrow_mut();
         hook_ctx.drain_states();
-    }
-
-    /// Prepares the server-side state.
-    pub fn prepare_state(&self) -> Option<String> {
-        let hook_ctx = self.hook_ctx.borrow();
-        hook_ctx.prepare_state()
     }
 }
 

@@ -3,14 +3,12 @@
 mod children;
 #[cfg(feature = "csr")]
 mod lifecycle;
-mod marker;
 mod properties;
 mod scope;
 
 use std::rc::Rc;
 
 pub use children::*;
-pub use marker::*;
 pub use properties::*;
 #[cfg(feature = "csr")]
 pub(crate) use scope::Scoped;
@@ -37,11 +35,6 @@ impl<COMP: BaseComponent> Context<COMP> {
     #[inline]
     pub fn props(&self) -> &COMP::Properties {
         &self.props
-    }
-
-    /// The component's prepared state
-    pub fn prepared_state(&self) -> Option<&str> {
-        None
     }
 }
 

@@ -190,23 +190,25 @@ mod ffi {
     #[link(wasm_import_module = "env")]
     extern "C" {
         #[link_name = "__CreateElement"]
-        pub fn create_element(tag_ptr: i32, tag_len: i32) -> ExternRef;
+        pub fn create_element(tag_ptr: i32, tag_len: i32) -> u32;
         #[link_name = "__CreatePage"]
-        pub fn create_page() -> ExternRef;
+        pub fn create_page() -> u32;
         #[link_name = "__CreateView"]
-        pub fn create_view() -> ExternRef;
+        pub fn create_view() -> u32;
         #[link_name = "__CreateScrollView"]
-        pub fn create_scroll_view() -> ExternRef;
+        pub fn create_scroll_view() -> u32;
         #[link_name = "__CreateText"]
-        pub fn create_text() -> ExternRef;
+        pub fn create_text() -> u32;
         #[link_name = "__CreateImage"]
-        pub fn create_image() -> ExternRef;
+        pub fn create_image() -> u32;
         #[link_name = "__CreateRawText"]
-        pub fn create_raw_text(text_ptr: i32, text_len: i32) -> ExternRef;
+        pub fn create_raw_text(text_ptr: i32, text_len: i32) -> u32;
         #[link_name = "__CreateNonElement"]
-        pub fn create_non_element() -> ExternRef;
+        pub fn create_non_element() -> u32;
         #[link_name = "__CreateWrapperElement"]
-        pub fn create_wrapper_element() -> ExternRef;
+        pub fn create_wrapper_element() -> u32;
+        #[link_name = "binding__DropElement"]
+        pub fn drop_element(element_id: u32);
         #[link_name = "__AppendElement"]
         pub fn append_element(parent: ExternRef, child: ExternRef) -> ExternRef;
         #[link_name = "__RemoveElement"]
@@ -550,33 +552,34 @@ mod ffi {
 mod ffi {
     use super::{ExternRef, HostValueAbiOut};
 
-    pub unsafe fn create_element(_: i32, _: i32) -> ExternRef {
-        ExternRef::null()
+    pub unsafe fn create_element(_: i32, _: i32) -> u32 {
+        0
     }
-    pub unsafe fn create_page() -> ExternRef {
-        ExternRef::null()
+    pub unsafe fn create_page() -> u32 {
+        0
     }
-    pub unsafe fn create_view() -> ExternRef {
-        ExternRef::null()
+    pub unsafe fn create_view() -> u32 {
+        0
     }
-    pub unsafe fn create_scroll_view() -> ExternRef {
-        ExternRef::null()
+    pub unsafe fn create_scroll_view() -> u32 {
+        0
     }
-    pub unsafe fn create_text() -> ExternRef {
-        ExternRef::null()
+    pub unsafe fn create_text() -> u32 {
+        0
     }
-    pub unsafe fn create_image() -> ExternRef {
-        ExternRef::null()
+    pub unsafe fn create_image() -> u32 {
+        0
     }
-    pub unsafe fn create_raw_text(_: i32, _: i32) -> ExternRef {
-        ExternRef::null()
+    pub unsafe fn create_raw_text(_: i32, _: i32) -> u32 {
+        0
     }
-    pub unsafe fn create_non_element() -> ExternRef {
-        ExternRef::null()
+    pub unsafe fn create_non_element() -> u32 {
+        0
     }
-    pub unsafe fn create_wrapper_element() -> ExternRef {
-        ExternRef::null()
+    pub unsafe fn create_wrapper_element() -> u32 {
+        0
     }
+    pub unsafe fn drop_element(_: u32) {}
     pub unsafe fn append_element(_: ExternRef, child: ExternRef) -> ExternRef {
         child
     }
@@ -869,19 +872,19 @@ mod ffi {
 /// Calls `__CreateElement`.
 pub fn create_element(tag: &str) -> ExternRef {
     let (tag_ptr, tag_len) = string_parts(tag);
-    unsafe { ffi::create_element(tag_ptr, tag_len) }
+    ExternRef::from_raw(unsafe { ffi::create_element(tag_ptr, tag_len) })
 }
 
 /// Calls `__CreatePage`.
 pub fn create_page() -> ExternRef {
-    unsafe { ffi::create_page() }
+    ExternRef::from_raw(unsafe { ffi::create_page() })
 }
 
 macro_rules! create_parent_with_info {
     ($name:ident, $ffi_name:ident) => {
         /// Calls the matching create binding.
         pub fn $name() -> ExternRef {
-            unsafe { ffi::$ffi_name() }
+            ExternRef::from_raw(unsafe { ffi::$ffi_name() })
         }
     };
 }
@@ -894,17 +897,22 @@ create_parent_with_info!(create_image, create_image);
 /// Calls `__CreateRawText`.
 pub fn create_raw_text(text: &str) -> ExternRef {
     let (text_ptr, text_len) = string_parts(text);
-    unsafe { ffi::create_raw_text(text_ptr, text_len) }
+    ExternRef::from_raw(unsafe { ffi::create_raw_text(text_ptr, text_len) })
 }
 
 /// Calls `__CreateNonElement`.
 pub fn create_non_element() -> ExternRef {
-    unsafe { ffi::create_non_element() }
+    ExternRef::from_raw(unsafe { ffi::create_non_element() })
 }
 
 /// Calls `__CreateWrapperElement`.
 pub fn create_wrapper_element() -> ExternRef {
-    unsafe { ffi::create_wrapper_element() }
+    ExternRef::from_raw(unsafe { ffi::create_wrapper_element() })
+}
+
+/// Calls `binding__DropElement`.
+pub fn drop_element(element: ExternRef) {
+    unsafe { ffi::drop_element(element.raw()) }
 }
 
 macro_rules! two_ref_return_ref {

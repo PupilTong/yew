@@ -13,7 +13,7 @@ pub struct SuspenseProps {
 }
 
 #[cfg(feature = "csr")]
-mod feat_csr_ssr {
+mod feat_csr {
     use super::*;
     use crate::html::{Component, Context, Html, Scope};
     use crate::suspense::Suspension;
@@ -129,10 +129,10 @@ mod feat_csr_ssr {
 }
 
 #[cfg(feature = "csr")]
-pub use feat_csr_ssr::*;
+pub use feat_csr::*;
 
 #[cfg(not(feature = "csr"))]
-mod feat_no_csr_ssr {
+mod feat_no_csr {
     use super::*;
     use crate::component;
 
@@ -144,4 +144,4 @@ mod feat_no_csr_ssr {
 }
 
 #[cfg(not(feature = "csr"))]
-pub use feat_no_csr_ssr::*;
+pub use feat_no_csr::*;

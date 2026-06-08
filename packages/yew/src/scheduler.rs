@@ -135,7 +135,7 @@ pub fn push(runnable: Box<dyn Runnable>) {
 }
 
 #[cfg(feature = "csr")]
-mod feat_csr_ssr {
+mod feat_csr_components {
     use super::*;
     /// Push a component creation, first render and first rendered [Runnable]s to be executed
     pub(crate) fn push_component_create(
@@ -168,7 +168,7 @@ mod feat_csr_ssr {
 }
 
 #[cfg(feature = "csr")]
-pub(crate) use feat_csr_ssr::*;
+pub(crate) use feat_csr_components::*;
 
 #[cfg(feature = "csr")]
 mod feat_csr {
@@ -302,7 +302,7 @@ impl Scheduler {
 
         // Priority rendering
         //
-        // This is needed for hydration subsequent render to fix node refs.
+        // This is needed on subsequent renders to fix node refs.
         if let Some(r) = self.render_priority.pop_topmost() {
             to_run.push(r);
             return;

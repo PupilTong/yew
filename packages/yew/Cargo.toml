@@ -24,22 +24,7 @@ yew-macro = { version = "^0.23.0", path = "../yew-macro" }
 thiserror.workspace = true
 futures = { workspace = true, features = ["std", "executor"] }
 implicit-clone = { workspace = true, features = ["map"] }
-serde = { workspace = true, features = ["derive"] }
 tracing = "0.1.44"
-rustversion.workspace = true
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-# We still need tokio as we have docs linked to it.
-tokio = { workspace = true, features = ["rt"] }
-
-[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
-
-[target.'cfg(all(target_arch = "wasm32", target_os = "wasi"))'.dependencies]
-tokio = { workspace = true, features = ["macros", "rt", "time"] }
-
-[dev-dependencies]
-trybuild = { workspace = true }
 
 [features]
 csr = []

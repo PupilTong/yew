@@ -257,6 +257,11 @@ pub fn remove_child(parent: ExternRef, child: ExternRef) -> Result<ExternRef> {
     Ok(raw::remove_element(parent, child))
 }
 
+/// Drops a host element number-id created by the `__Create*` bindings.
+pub fn drop_element(element: ExternRef) {
+    raw::drop_element(element);
+}
+
 /// Inserts a child before `ref_child`, or appends it when `ref_child` is `None`.
 pub fn insert_before(
     parent: ExternRef,

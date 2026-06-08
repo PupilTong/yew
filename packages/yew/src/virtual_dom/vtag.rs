@@ -120,7 +120,7 @@ pub(crate) struct TextareaFields {
     pub(crate) value: Value<TextAreaElement>,
     /// Contains the default value of
     /// [TextAreaElement](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/textarea).
-    #[allow(unused)] // unused only if both "csr" and "ssr" features are off
+    #[allow(unused)] // unused when the "csr" feature is off
     pub(crate) defaultvalue: Option<AttrValue>,
 }
 
