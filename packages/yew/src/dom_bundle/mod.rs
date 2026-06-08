@@ -33,8 +33,8 @@ use bsuspense::BSuspense;
 use btag::{BTag, Registry};
 use btext::BText;
 pub(crate) use position::{DomSlot, DynamicDomSlot};
+pub use subtree_root::BSubtree;
 use subtree_root::EventDescriptor;
-pub use subtree_root::{set_event_bubbling, BSubtree};
 use traits::{Reconcilable, ReconcileTarget};
 use utils::test_log;
 

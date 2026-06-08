@@ -17,11 +17,6 @@ thread_local! {
     static LISTENER_IDS: RefCell<HashMap<ExternRef, u32>> = RefCell::new(HashMap::new());
 }
 
-#[allow(dead_code)]
-fn take_listener_id(el: ExternRef) -> Option<u32> {
-    LISTENER_IDS.with(|map| map.borrow().get(&el).copied())
-}
-
 fn store_listener_id(el: ExternRef, id: u32) {
     LISTENER_IDS.with(|map| {
         map.borrow_mut().insert(el, id);
@@ -32,18 +27,6 @@ fn forget_listener_id(el: ExternRef) {
     LISTENER_IDS.with(|map| {
         map.borrow_mut().remove(&el);
     });
-}
-
-/// DOM-Types that can have listeners registered on them.
-#[allow(dead_code)]
-pub trait EventListening {
-    fn listener_id(&self) -> Option<u32>;
-}
-
-impl EventListening for ExternRef {
-    fn listener_id(&self) -> Option<u32> {
-        take_listener_id(*self)
-    }
 }
 
 /// An active set of listeners on an element
@@ -140,28 +123,6 @@ impl Registry {
             id_counter: u32::default(),
             by_id: HashMap::default(),
         }
-    }
-
-    /// Handle a single event, given the listening element and event descriptor.
-    #[allow(dead_code)]
-    pub fn get_handler(
-        registry: &RefCell<Registry>,
-        listening: &dyn EventListening,
-        desc: &EventDescriptor,
-    ) -> Option<impl FnOnce()> {
-        // The tricky part is that we want to drop the reference to the registry before
-        // calling any actual listeners (since that might end up running lifecycle methods
-        // and modify the registry). So we clone the current listeners and return a closure
-        let listener_id = listening.listener_id()?;
-        let registry_ref = registry.borrow();
-        let handlers = registry_ref.by_id.get(&listener_id)?;
-        let listeners = handlers.get(desc)?.clone();
-        drop(registry_ref); // unborrow the registry, before running any listeners
-        Some(move || {
-            for l in listeners {
-                l.handle(());
-            }
-        })
     }
 
     /// Register all passed listeners under ID
