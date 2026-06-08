@@ -104,7 +104,6 @@ checksum = "1689b939ee35e3a075b0834b5672efd43aec8a6e81a1c6002b76a5ca2f211ae0"
 dependencies = [
  "implicit-clone-derive",
  "indexmap",
- "serde",
 ]
 
 [[package]]
@@ -125,8 +124,6 @@ checksum = "45a8a2b9cb3e0b0c1803dbb0758ffac5de2f425b23c28f518faabd9d805342ff"
 dependencies = [
  "equivalent",
  "hashbrown",
- "serde",
- "serde_core",
 ]
 
 [[package]]

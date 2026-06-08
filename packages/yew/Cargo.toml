@@ -31,7 +31,6 @@ csr = []
 not_browser_env = []
 default = []
 test = []
-serde = ["implicit-clone/serde"]
 
 [package.metadata.docs.rs]
 all-features = true
