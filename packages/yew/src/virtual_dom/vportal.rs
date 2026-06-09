@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use lynx_sys::{Element, ExternRef};
+use lynx_sys::Element;
 
 use super::VNode;
 
@@ -16,7 +16,7 @@ pub struct VPortal {
     pub host: PortalHost,
     /// The next sibling after the inserted content. Must be a
     /// child of `host` if set.
-    pub inner_sibling: Option<ExternRef>,
+    pub inner_sibling: Option<i32>,
     /// The inserted node
     pub node: VNode,
 }
@@ -42,7 +42,7 @@ impl VPortal {
     /// Creates a [VPortal] rendering `content` in the DOM hierarchy under `host`.
     /// If `inner_sibling` is given, the content is inserted before that node.
     /// The parent of `inner_sibling`, if given, must be `host`.
-    pub fn new_before(content: VNode, host: PortalHost, inner_sibling: Option<ExternRef>) -> Self {
+    pub fn new_before(content: VNode, host: PortalHost, inner_sibling: Option<i32>) -> Self {
         Self {
             host,
             inner_sibling,
