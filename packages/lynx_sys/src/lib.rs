@@ -51,33 +51,44 @@ impl std::error::Error for Error {}
 /// Binding result type.
 pub type Result<T> = std::result::Result<T, Error>;
 
-const DEFAULT_STRING_CAPACITY: usize = 16 * 1024;
-
+#[inline]
 fn string_return(
     binding: &'static str,
-    f: impl FnOnce(*mut u8, i32) -> i32,
+    call: impl Fn(*mut u8, i32) -> i32,
 ) -> Result<Option<String>> {
-    let mut buffer = vec![0; DEFAULT_STRING_CAPACITY];
-    let required = f(buffer.as_mut_ptr(), buffer.len() as i32);
-    if required < 0 {
-        return Ok(None);
-    }
-
-    let required = required as usize;
-    if required > buffer.len() {
-        return Err(Error::StringBufferTooSmall {
+    match raw::string_out_call(call) {
+        raw::StringOut::Absent => Ok(None),
+        raw::StringOut::Bytes(bytes) => String::from_utf8(bytes)
+            .map(Some)
+            .map_err(|_| Error::InvalidUtf8(binding)),
+        raw::StringOut::Overflow { required, capacity } => Err(Error::StringBufferTooSmall {
             binding,
             required,
-            capacity: buffer.len(),
-        });
+            capacity,
+        }),
     }
-
-    buffer.truncate(required);
-    String::from_utf8(buffer)
-        .map(Some)
-        .map_err(|_| Error::InvalidUtf8(binding))
 }
 
+/// Calls a string-returning binding and invokes `f` with the borrowed UTF-8
+/// result without allocating an owned `String`. `f` receives `Ok(None)` when the
+/// host reports the value absent, or `Err(InvalidUtf8)` when the bytes are not
+/// valid UTF-8. The borrowed `&str` is valid only for the duration of `f`.
+#[inline]
+fn string_return_with<R>(
+    binding: &'static str,
+    call: impl Fn(*mut u8, i32) -> i32,
+    f: impl FnOnce(Result<Option<&str>>) -> R,
+) -> R {
+    raw::string_borrow_call(call, |bytes| match bytes {
+        None => f(Ok(None)),
+        Some(bytes) => match std::str::from_utf8(bytes) {
+            Ok(value) => f(Ok(Some(value))),
+            Err(_) => f(Err(Error::InvalidUtf8(binding))),
+        },
+    })
+}
+
+#[inline]
 fn required_ref(binding: &'static str, raw: ExternRef) -> Result<ExternRef> {
     if raw.is_null() {
         Err(Error::NullExternRef(binding))
@@ -110,6 +121,7 @@ impl Element {
     }
 
     /// Wraps a non-null host reference.
+    #[inline]
     pub fn from_raw(raw: ExternRef) -> Option<Self> {
         if raw.is_null() {
             None
@@ -119,16 +131,19 @@ impl Element {
     }
 
     /// Wraps a host reference without checking for null.
+    #[inline(always)]
     pub fn from_raw_unchecked(raw: ExternRef) -> Self {
         Self { raw }
     }
 
     /// Returns the raw host reference carried by this wrapper.
+    #[inline(always)]
     pub fn raw(&self) -> ExternRef {
         self.raw
     }
 
     /// Returns the raw host reference. Kept for existing Yew call sites.
+    #[inline(always)]
     pub fn id(&self) -> ExternRef {
         self.raw
     }
@@ -139,6 +154,7 @@ impl Element {
     }
 
     /// Consumes the wrapper and returns the host reference.
+    #[inline(always)]
     pub fn into_raw(self) -> ExternRef {
         self.raw
     }
@@ -167,6 +183,7 @@ impl Text {
     }
 
     /// Wraps a non-null host reference.
+    #[inline]
     pub fn from_raw(raw: ExternRef) -> Option<Self> {
         if raw.is_null() {
             None
@@ -176,21 +193,25 @@ impl Text {
     }
 
     /// Wraps a host reference without checking for null.
+    #[inline(always)]
     pub fn from_raw_unchecked(raw: ExternRef) -> Self {
         Self { raw }
     }
 
     /// Returns the raw host reference carried by this wrapper.
+    #[inline(always)]
     pub fn raw(&self) -> ExternRef {
         self.raw
     }
 
     /// Returns the raw host reference. Kept for existing Yew call sites.
+    #[inline(always)]
     pub fn id(&self) -> ExternRef {
         self.raw
     }
 
     /// Consumes the wrapper and returns the host reference.
+    #[inline(always)]
     pub fn into_raw(self) -> ExternRef {
         self.raw
     }
@@ -236,11 +257,13 @@ pub trait ElementOps {
 }
 
 impl ElementOps for Element {
+    #[inline]
     fn set_attribute(&self, key: &str, value: &str) -> Result<()> {
         raw::set_attribute(self.raw, HostValue::String(key), HostValue::String(value));
         Ok(())
     }
 
+    #[inline]
     fn remove_attribute(&self, key: &str) -> Result<()> {
         raw::set_attribute(self.raw, HostValue::String(key), HostValue::Null);
         Ok(())
@@ -248,11 +271,13 @@ impl ElementOps for Element {
 }
 
 /// Appends a child to a parent element.
+#[inline]
 pub fn append_child(parent: ExternRef, child: ExternRef) -> Result<ExternRef> {
     Ok(raw::append_element(parent, child))
 }
 
 /// Removes a child from a parent element.
+#[inline]
 pub fn remove_child(parent: ExternRef, child: ExternRef) -> Result<ExternRef> {
     Ok(raw::remove_element(parent, child))
 }
@@ -263,6 +288,7 @@ pub fn drop_element(element: ExternRef) {
 }
 
 /// Inserts a child before `ref_child`, or appends it when `ref_child` is `None`.
+#[inline]
 pub fn insert_before(
     parent: ExternRef,
     node: ExternRef,
@@ -275,24 +301,28 @@ pub fn insert_before(
 }
 
 /// Returns the first child of an element.
+#[inline]
 pub fn get_first_child(parent: ExternRef) -> Option<ExternRef> {
     let raw = raw::first_element(parent);
     (!raw.is_null()).then_some(raw)
 }
 
 /// Returns the last child of an element.
+#[inline]
 pub fn get_last_child(parent: ExternRef) -> Option<ExternRef> {
     let raw = raw::last_element(parent);
     (!raw.is_null()).then_some(raw)
 }
 
 /// Returns the next sibling of a node.
+#[inline]
 pub fn get_next_sibling(node: ExternRef) -> Option<ExternRef> {
     let raw = raw::next_element(node);
     (!raw.is_null()).then_some(raw)
 }
 
 /// Returns the parent element of a node.
+#[inline]
 pub fn get_parent_element(node: ExternRef) -> Option<ExternRef> {
     let raw = raw::get_parent(node);
     (!raw.is_null()).then_some(raw)
@@ -301,6 +331,14 @@ pub fn get_parent_element(node: ExternRef) -> Option<ExternRef> {
 /// Returns the host tag name.
 pub fn get_tag(node: ExternRef) -> Result<Option<String>> {
     string_return("__GetTag", |ptr, max| raw::get_tag(node, ptr, max))
+}
+
+/// Borrowing variant of [`get_tag`]: invokes `f` with the tag name as a borrowed
+/// `&str`, avoiding an owned `String` allocation. The borrow is valid only for
+/// the duration of `f`.
+#[inline]
+pub fn get_tag_with<R>(node: ExternRef, f: impl FnOnce(Result<Option<&str>>) -> R) -> R {
+    string_return_with("__GetTag", |ptr, max| raw::get_tag(node, ptr, max), f)
 }
 
 /// Returns the namespace URI recorded on an element, if present.
@@ -312,6 +350,20 @@ pub fn get_namespace_uri(node: ExternRef) -> Result<Option<String>> {
         HostValueOut::Null | HostValueOut::Undefined => Ok(None),
         _ => Ok(None),
     }
+}
+
+/// Borrowing variant of [`get_namespace_uri`]: invokes `f` with the recorded
+/// namespace URI as a borrowed `&str`, avoiding an owned `String` allocation.
+/// The borrow is valid only for the duration of `f`.
+#[inline]
+pub fn get_namespace_uri_with<R>(node: ExternRef, f: impl FnOnce(Result<Option<&str>>) -> R) -> R {
+    raw::get_attribute_by_name_borrow(node, "xmlns", |value| match value {
+        raw::AnyBorrow::Str(bytes) => match std::str::from_utf8(bytes) {
+            Ok(value) => f(Ok(Some(value))),
+            Err(_) => f(Err(Error::InvalidUtf8("__GetAttributeByName"))),
+        },
+        _ => f(Ok(None)),
+    })
 }
 
 /// Flushes pending element tree changes.

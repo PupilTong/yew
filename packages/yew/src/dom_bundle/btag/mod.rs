@@ -286,14 +286,13 @@ impl VTag {
 }
 
 fn parent_namespace_is(parent: &Element, expected: &str) -> bool {
-    // The component-model binding marshals the namespace URI as an
-    // owned `String`; namespace detection never invents SVG context
-    // where there isn't one, so missing / erroring values fall through
-    // to `false`.
-    match lynx_sys::get_namespace_uri(parent.id()) {
-        Ok(Some(uri)) => uri == expected,
-        _ => false,
-    }
+    // Borrow the namespace URI for the comparison instead of allocating an
+    // owned `String`; namespace detection never invents SVG context where
+    // there isn't one, so missing / erroring values fall through to `false`.
+    lynx_sys::get_namespace_uri_with(
+        parent.id(),
+        |result| matches!(result, Ok(Some(uri)) if uri == expected),
+    )
 }
 
 impl BTag {

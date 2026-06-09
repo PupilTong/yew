@@ -1,5 +1,7 @@
 //! Raw wrappers for the WAMR `env` host-function ABI.
 
+use std::cell::RefCell;
+
 /// Raw host value kind for dynamic `any` arguments and returns.
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,21 +31,25 @@ pub struct ExternRef(u32);
 
 impl ExternRef {
     /// Creates a wrapper from the raw ABI carrier.
+    #[inline(always)]
     pub const fn from_raw(raw: u32) -> Self {
         Self(raw)
     }
 
     /// Returns a null host reference.
+    #[inline(always)]
     pub const fn null() -> Self {
         Self(0)
     }
 
     /// Returns the raw ABI carrier.
+    #[inline(always)]
     pub const fn raw(self) -> u32 {
         self.0
     }
 
     /// Returns true when this reference is null.
+    #[inline(always)]
     pub const fn is_null(self) -> bool {
         self.0 == 0
     }
@@ -77,6 +83,7 @@ pub enum HostValue<'a> {
 }
 
 impl HostValue<'_> {
+    #[inline(always)]
     fn into_raw_parts(self) -> (i32, f64, i32, i32, ExternRef) {
         match self {
             Self::Undefined => (
@@ -140,41 +147,231 @@ pub enum HostValueOut {
     ExternRef(ExternRef),
 }
 
-const ANY_STRING_CAPACITY: usize = 16 * 1024;
+/// Initial capacity for the reusable host-string scratch buffer.
+///
+/// The buffer is reused across calls and grown on demand, so steady-state
+/// string returns allocate nothing for the transfer; 1 KiB covers tag names,
+/// attribute values, ids, and namespace URIs without growing on the first call.
+const SCRATCH_INITIAL_CAPACITY: usize = 1024;
 
+thread_local! {
+    /// Reusable scratch buffer backing every host string-out call on this thread.
+    ///
+    /// The guest is single-threaded `wasm32-wasip1`, so this is effectively a
+    /// global with one owner. Reusing the allocation avoids a per-call `malloc`
+    /// + zero-fill + `free`; results are copied out at their exact size.
+    static SCRATCH: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Result of [`string_out_call`].
+pub(crate) enum StringOut {
+    /// The host reported the value is absent (negative sentinel).
+    Absent,
+    /// Exact-capacity bytes copied out of the scratch buffer.
+    Bytes(Vec<u8>),
+    /// The host re-reported a required length larger than the grown capacity
+    /// (host misreporting); surfaced so callers can raise an error.
+    Overflow {
+        /// Required byte length reported by the host on retry.
+        required: usize,
+        /// Capacity offered on retry.
+        capacity: usize,
+    },
+}
+
+/// Grows `buf` so the host has at least `min` writable bytes, without
+/// zero-filling, and sets the logical length to the full capacity so
+/// `as_mut_ptr()` + `len()` describe the whole writable window.
+fn ensure_capacity(buf: &mut Vec<u8>, min: usize) {
+    if buf.capacity() < min {
+        buf.reserve(min - buf.len());
+    }
+    // SAFETY: `u8` has no invalid bit patterns, and we never read past the
+    // `required`/`written` count the host reports, so the uninitialized tail is
+    // never observed. The pointer/length pair handed to the host stays within
+    // the single allocation backing `buf`.
+    unsafe {
+        buf.set_len(buf.capacity());
+    }
+}
+
+/// Runs `f` with the thread-local scratch buffer (grown to at least
+/// `min_capacity`), falling back to a one-off buffer if the scratch is already
+/// borrowed — i.e. a host call re-entered a string-returning binding on this
+/// thread. That is not expected for these accessors, but we handle it without
+/// panicking.
+fn with_scratch<R>(min_capacity: usize, f: impl FnOnce(&mut Vec<u8>) -> R) -> R {
+    SCRATCH.with(|cell| match cell.try_borrow_mut() {
+        Ok(mut buf) => {
+            ensure_capacity(&mut buf, min_capacity);
+            f(&mut buf)
+        }
+        Err(_) => {
+            let mut buf = Vec::new();
+            ensure_capacity(&mut buf, min_capacity);
+            f(&mut buf)
+        }
+    })
+}
+
+#[inline(always)]
 fn string_parts(value: &str) -> (i32, i32) {
     (value.as_ptr() as i32, value.len() as i32)
 }
 
-fn decode_any_return(raw_ref: ExternRef, out: HostValueAbiOut, bytes: Vec<u8>) -> HostValueOut {
+/// Drives one host string-out call against the reusable scratch buffer.
+///
+/// `call(ptr, max_len)` returns the host-reported *required* byte length, or a
+/// negative sentinel meaning "absent". When the first capacity is too small the
+/// buffer grows to exactly `required` and the call is retried once (the host's
+/// `required` is authoritative). Bytes are copied out at their exact size.
+pub(crate) fn string_out_call(call: impl Fn(*mut u8, i32) -> i32) -> StringOut {
+    with_scratch(SCRATCH_INITIAL_CAPACITY, |buf| {
+        let required = call(buf.as_mut_ptr(), buf.len() as i32);
+        if required < 0 {
+            return StringOut::Absent;
+        }
+        let required = required as usize;
+        if required <= buf.len() {
+            return StringOut::Bytes(buf[..required].to_vec());
+        }
+
+        // Too small: grow to fit and let the host write the full payload once more.
+        ensure_capacity(buf, required);
+        let required = call(buf.as_mut_ptr(), buf.len() as i32);
+        if required < 0 {
+            return StringOut::Absent;
+        }
+        let required = required as usize;
+        if required > buf.len() {
+            return StringOut::Overflow {
+                required,
+                capacity: buf.len(),
+            };
+        }
+        StringOut::Bytes(buf[..required].to_vec())
+    })
+}
+
+/// Decodes a dynamic return that carries no string payload, without touching
+/// the scratch buffer.
+fn decode_non_string(raw_ref: ExternRef, out: &HostValueAbiOut) -> HostValueOut {
     match out.kind {
-        value if value == HostValueKind::Undefined as i32 => HostValueOut::Undefined,
         value if value == HostValueKind::Null as i32 => HostValueOut::Null,
         value if value == HostValueKind::Bool as i32 => HostValueOut::Bool(out.bool_value != 0),
         value if value == HostValueKind::Number as i32 => HostValueOut::Number(out.number_value),
-        value if value == HostValueKind::String as i32 => {
-            let written_len = out.string_written_length.max(0) as usize;
-            let mut bytes = bytes;
-            bytes.truncate(written_len.min(bytes.len()));
-            HostValueOut::String {
-                bytes,
-                required_len: out.string_required_length.max(0) as usize,
-            }
-        }
         value if value == HostValueKind::ExternRef as i32 => HostValueOut::ExternRef(raw_ref),
         _ => HostValueOut::Undefined,
     }
 }
 
-fn any_return(f: impl FnOnce(*mut HostValueAbiOut, *mut u8, i32) -> ExternRef) -> HostValueOut {
+/// Drives a dynamic (`any`) host return against the reusable scratch buffer.
+///
+/// Only the `String` kind reads the buffer; every other kind decodes from the
+/// out-struct and allocates nothing. The `String` path grows + retries once if
+/// the host's required length exceeds the offered capacity, then copies the
+/// written bytes out at their exact size.
+fn any_return(call: impl Fn(*mut HostValueAbiOut, *mut u8, i32) -> ExternRef) -> HostValueOut {
     let mut out = HostValueAbiOut::default();
-    let mut string_buffer = vec![0; ANY_STRING_CAPACITY];
-    let raw_ref = f(
-        &mut out,
-        string_buffer.as_mut_ptr(),
-        string_buffer.len() as i32,
-    );
-    decode_any_return(raw_ref, out, string_buffer)
+    with_scratch(SCRATCH_INITIAL_CAPACITY, |buf| {
+        let raw_ref = call(&mut out, buf.as_mut_ptr(), buf.len() as i32);
+        if out.kind != HostValueKind::String as i32 {
+            return decode_non_string(raw_ref, &out);
+        }
+
+        let required = out.string_required_length.max(0) as usize;
+        if required > buf.len() {
+            // Grow to fit and let the host rewrite the full string once more.
+            ensure_capacity(buf, required);
+            call(&mut out, buf.as_mut_ptr(), buf.len() as i32);
+        }
+        let written = (out.string_written_length.max(0) as usize).min(buf.len());
+        HostValueOut::String {
+            bytes: buf[..written].to_vec(),
+            required_len: out.string_required_length.max(0) as usize,
+        }
+    })
+}
+
+/// Like [`string_out_call`] but lends the written bytes to `f` instead of
+/// copying them out, so callers that only inspect the string allocate nothing.
+///
+/// The slice is valid only for the duration of `f`; `f` receives `None` for the
+/// absent (negative) sentinel. On a pathological post-grow overflow the slice is
+/// clamped to the available capacity rather than erroring (the owned
+/// [`crate::Result`] path surfaces that case instead).
+pub(crate) fn string_borrow_call<R>(
+    call: impl Fn(*mut u8, i32) -> i32,
+    f: impl FnOnce(Option<&[u8]>) -> R,
+) -> R {
+    with_scratch(SCRATCH_INITIAL_CAPACITY, |buf| {
+        let required = call(buf.as_mut_ptr(), buf.len() as i32);
+        if required < 0 {
+            return f(None);
+        }
+        let required = required as usize;
+        if required <= buf.len() {
+            return f(Some(&buf[..required]));
+        }
+        ensure_capacity(buf, required);
+        let required = call(buf.as_mut_ptr(), buf.len() as i32);
+        if required < 0 {
+            return f(None);
+        }
+        let required = (required as usize).min(buf.len());
+        f(Some(&buf[..required]))
+    })
+}
+
+/// Borrowed dynamic (`any`) host return value. The `Str` slice is valid only for
+/// the duration of the closure passed to [`any_borrow_call`].
+///
+/// Mirrors every [`HostValueOut`] kind so any borrowing caller can decode a
+/// dynamic return; today only the `Str`/`Null` arms are inspected (by
+/// `get_namespace_uri_with`), so the other payloads are not yet read.
+#[allow(dead_code)]
+pub(crate) enum AnyBorrow<'a> {
+    /// Undefined or any unrecognized kind.
+    Undefined,
+    /// Null.
+    Null,
+    /// Boolean.
+    Bool(bool),
+    /// Number.
+    Number(f64),
+    /// Borrowed (unvalidated) UTF-8 bytes from the scratch buffer.
+    Str(&'a [u8]),
+    /// Host-owned reference.
+    ExternRef(ExternRef),
+}
+
+/// Like [`any_return`] but lends the string bytes (when present) to `f` instead
+/// of copying them, so callers that only inspect the value allocate nothing.
+pub(crate) fn any_borrow_call<R>(
+    call: impl Fn(*mut HostValueAbiOut, *mut u8, i32) -> ExternRef,
+    f: impl FnOnce(AnyBorrow<'_>) -> R,
+) -> R {
+    let mut out = HostValueAbiOut::default();
+    with_scratch(SCRATCH_INITIAL_CAPACITY, |buf| {
+        let raw_ref = call(&mut out, buf.as_mut_ptr(), buf.len() as i32);
+        if out.kind == HostValueKind::String as i32 {
+            let required = out.string_required_length.max(0) as usize;
+            if required > buf.len() {
+                ensure_capacity(buf, required);
+                call(&mut out, buf.as_mut_ptr(), buf.len() as i32);
+            }
+            let written = (out.string_written_length.max(0) as usize).min(buf.len());
+            return f(AnyBorrow::Str(&buf[..written]));
+        }
+        let borrowed = match out.kind {
+            value if value == HostValueKind::Null as i32 => AnyBorrow::Null,
+            value if value == HostValueKind::Bool as i32 => AnyBorrow::Bool(out.bool_value != 0),
+            value if value == HostValueKind::Number as i32 => AnyBorrow::Number(out.number_value),
+            value if value == HostValueKind::ExternRef as i32 => AnyBorrow::ExternRef(raw_ref),
+            _ => AnyBorrow::Undefined,
+        };
+        f(borrowed)
+    })
 }
 
 macro_rules! any_args {
@@ -870,12 +1067,14 @@ mod ffi {
 }
 
 /// Calls `__CreateElement`.
+#[inline]
 pub fn create_element(tag: &str) -> ExternRef {
     let (tag_ptr, tag_len) = string_parts(tag);
     ExternRef::from_raw(unsafe { ffi::create_element(tag_ptr, tag_len) })
 }
 
 /// Calls `__CreatePage`.
+#[inline]
 pub fn create_page() -> ExternRef {
     ExternRef::from_raw(unsafe { ffi::create_page() })
 }
@@ -883,6 +1082,7 @@ pub fn create_page() -> ExternRef {
 macro_rules! create_parent_with_info {
     ($name:ident, $ffi_name:ident) => {
         /// Calls the matching create binding.
+        #[inline]
         pub fn $name() -> ExternRef {
             ExternRef::from_raw(unsafe { ffi::$ffi_name() })
         }
@@ -895,22 +1095,26 @@ create_parent_with_info!(create_text, create_text);
 create_parent_with_info!(create_image, create_image);
 
 /// Calls `__CreateRawText`.
+#[inline]
 pub fn create_raw_text(text: &str) -> ExternRef {
     let (text_ptr, text_len) = string_parts(text);
     ExternRef::from_raw(unsafe { ffi::create_raw_text(text_ptr, text_len) })
 }
 
 /// Calls `__CreateNonElement`.
+#[inline]
 pub fn create_non_element() -> ExternRef {
     ExternRef::from_raw(unsafe { ffi::create_non_element() })
 }
 
 /// Calls `__CreateWrapperElement`.
+#[inline]
 pub fn create_wrapper_element() -> ExternRef {
     ExternRef::from_raw(unsafe { ffi::create_wrapper_element() })
 }
 
 /// Calls `binding__DropElement`.
+#[inline]
 pub fn drop_element(element: ExternRef) {
     unsafe { ffi::drop_element(element.raw()) }
 }
@@ -918,6 +1122,7 @@ pub fn drop_element(element: ExternRef) {
 macro_rules! two_ref_return_ref {
     ($name:ident, $ffi_name:ident) => {
         /// Calls the matching two-externref binding.
+        #[inline]
         pub fn $name(left: ExternRef, right: ExternRef) -> ExternRef {
             unsafe { ffi::$ffi_name(left, right) }
         }
@@ -928,6 +1133,7 @@ two_ref_return_ref!(append_element, append_element);
 two_ref_return_ref!(remove_element, remove_element);
 
 /// Calls `__InsertElementBefore`.
+#[inline]
 pub fn insert_element_before(
     parent: ExternRef,
     child: ExternRef,
@@ -944,6 +1150,7 @@ pub fn insert_element_before(
 macro_rules! one_ref_return_ref {
     ($name:ident, $ffi_name:ident) => {
         /// Calls the matching one-externref binding.
+        #[inline]
         pub fn $name(element: ExternRef) -> ExternRef {
             unsafe { ffi::$ffi_name(element) }
         }
@@ -983,11 +1190,18 @@ pub fn get_element_unique_id(element: ExternRef) -> i64 {
 }
 
 /// Calls `__GetTag`.
+///
+/// Thin raw-ABI wrapper: the out-pointer/length describe a guest-owned buffer
+/// (today always supplied by [`string_out_call`]); the host only writes within
+/// `out_max_len`.
+#[inline]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn get_tag(element: ExternRef, out_ptr: *mut u8, out_max_len: i32) -> i32 {
     unsafe { ffi::get_tag(element, out_ptr, out_max_len) }
 }
 
 /// Calls `__SetAttribute`.
+#[inline]
 pub fn set_attribute(element: ExternRef, key: HostValue<'_>, value: HostValue<'_>) {
     let (key_kind, key_number, key_string_ptr, key_string_len, key_ref) = any_args!(key);
     let (value_kind, value_number, value_string_ptr, value_string_len, value_ref) =
@@ -1010,18 +1224,21 @@ pub fn set_attribute(element: ExternRef, key: HostValue<'_>, value: HostValue<'_
 }
 
 /// Calls `__AddClass`.
+#[inline]
 pub fn add_class(element: ExternRef, class_name: &str) {
     let (ptr, len) = string_parts(class_name);
     unsafe { ffi::add_class(element, ptr, len) }
 }
 
 /// Calls `__SetClasses`.
+#[inline]
 pub fn set_classes(element: ExternRef, classes: &str) {
     let (ptr, len) = string_parts(classes);
     unsafe { ffi::set_classes(element, ptr, len) }
 }
 
 /// Calls `__AddInlineStyle`.
+#[inline]
 pub fn add_inline_style(element: ExternRef, key: HostValue<'_>, value: HostValue<'_>) {
     let (key_kind, key_number, key_string_ptr, key_string_len, key_ref) = any_args!(key);
     let (value_kind, value_number, value_string_ptr, value_string_len, value_ref) =
@@ -1044,12 +1261,18 @@ pub fn add_inline_style(element: ExternRef, key: HostValue<'_>, value: HostValue
 }
 
 /// Calls `__SetInlineStyles`.
+#[inline]
 pub fn set_inline_styles(element: ExternRef, value: HostValue<'_>) {
     let (kind, number, string_ptr, string_len, ref_value) = any_args!(value);
     unsafe { ffi::set_inline_styles(element, kind, number, string_ptr, string_len, ref_value) }
 }
 
 /// Calls `__GetInlineStyles`.
+///
+/// Thin raw-ABI wrapper: the out-pointer/length describe a guest-owned buffer;
+/// the host only writes within `out_max_len`.
+#[inline]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn get_inline_styles(element: ExternRef, out_ptr: *mut u8, out_max_len: i32) -> i32 {
     unsafe { ffi::get_inline_styles(element, out_ptr, out_max_len) }
 }
@@ -1073,6 +1296,7 @@ pub fn get_computed_styles(element: ExternRef) -> HostValueOut {
 }
 
 /// Calls `__AddEvent`.
+#[inline]
 pub fn add_event(element: ExternRef, name: &str, event_type: &str, value: HostValue<'_>) {
     let (name_ptr, name_len) = string_parts(name);
     let (type_ptr, type_len) = string_parts(event_type);
@@ -1086,6 +1310,7 @@ pub fn add_event(element: ExternRef, name: &str, event_type: &str, value: HostVa
 }
 
 /// Calls `__SetEvents`.
+#[inline]
 pub fn set_events(element: ExternRef, value: HostValue<'_>) {
     let (kind, number, string_ptr, string_len, ref_value) = any_args!(value);
     unsafe { ffi::set_events(element, kind, number, string_ptr, string_len, ref_value) }
@@ -1099,17 +1324,24 @@ pub fn get_event(element: ExternRef, name: &str, event_type: &str) -> ExternRef 
 }
 
 /// Calls `__SetID`.
+#[inline]
 pub fn set_id(element: ExternRef, value: HostValue<'_>) {
     let (kind, number, string_ptr, string_len, ref_value) = any_args!(value);
     unsafe { ffi::set_id(element, kind, number, string_ptr, string_len, ref_value) }
 }
 
 /// Calls `__GetID`.
+///
+/// Thin raw-ABI wrapper: the out-pointer/length describe a guest-owned buffer;
+/// the host only writes within `out_max_len`.
+#[inline]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn get_id(element: ExternRef, out_ptr: *mut u8, out_max_len: i32) -> i32 {
     unsafe { ffi::get_id(element, out_ptr, out_max_len) }
 }
 
 /// Calls `__AddDataset`.
+#[inline]
 pub fn add_dataset(element: ExternRef, key: &str, value: HostValue<'_>) {
     let (key_ptr, key_len) = string_parts(key);
     let (kind, number, string_ptr, string_len, ref_value) = any_args!(value);
@@ -1121,6 +1353,7 @@ pub fn add_dataset(element: ExternRef, key: &str, value: HostValue<'_>) {
 }
 
 /// Calls `__SetDataset`.
+#[inline]
 pub fn set_dataset(element: ExternRef, value: HostValue<'_>) {
     let (kind, number, string_ptr, string_len, ref_value) = any_args!(value);
     unsafe { ffi::set_dataset(element, kind, number, string_ptr, string_len, ref_value) }
@@ -1269,6 +1502,23 @@ pub fn get_attribute_by_name(element: ExternRef, key: &str) -> HostValueOut {
     })
 }
 
+/// Borrowing variant of [`get_attribute_by_name`] that lends the value to `f`
+/// without allocating an owned string.
+#[inline]
+pub(crate) fn get_attribute_by_name_borrow<R>(
+    element: ExternRef,
+    key: &str,
+    f: impl FnOnce(AnyBorrow<'_>) -> R,
+) -> R {
+    let (key_ptr, key_len) = string_parts(key);
+    any_borrow_call(
+        |out, string_ptr, string_len| unsafe {
+            ffi::get_attribute_by_name(element, key_ptr, key_len, out, string_ptr, string_len)
+        },
+        f,
+    )
+}
+
 /// Calls `__GetPageElement`.
 pub fn get_page_element() -> ExternRef {
     unsafe { ffi::get_page_element() }
@@ -1361,4 +1611,176 @@ pub fn set_interval(callback: ExternRef, delay_ms: i64) -> i64 {
 /// Calls `clearInterval`.
 pub fn clear_interval(timer_id: i64) {
     unsafe { ffi::clear_interval(timer_id) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A fake host that writes `payload` into the buffer when it fits and
+    /// reports the payload length as the required length.
+    fn writer(payload: &'static [u8]) -> impl Fn(*mut u8, i32) -> i32 {
+        move |ptr, max| {
+            let n = payload.len();
+            if (max as usize) >= n {
+                // SAFETY: test-only; `ptr` points at `max` writable bytes.
+                unsafe { std::ptr::copy_nonoverlapping(payload.as_ptr(), ptr, n) };
+            }
+            n as i32
+        }
+    }
+
+    #[test]
+    fn string_out_is_right_sized() {
+        match string_out_call(writer(b"div")) {
+            StringOut::Bytes(bytes) => {
+                assert_eq!(bytes, b"div");
+                // Right-sized result, not backed by the scratch allocation.
+                assert!(bytes.capacity() < SCRATCH_INITIAL_CAPACITY);
+            }
+            _ => panic!("expected bytes"),
+        }
+    }
+
+    #[test]
+    fn string_out_absent_on_negative() {
+        assert!(matches!(
+            string_out_call(|_ptr, _max| -1),
+            StringOut::Absent
+        ));
+    }
+
+    #[test]
+    fn string_out_grows_and_retries() {
+        let payload = vec![b'x'; SCRATCH_INITIAL_CAPACITY + 100];
+        let expected_len = payload.len();
+        let call = move |ptr: *mut u8, max: i32| {
+            let n = payload.len();
+            if (max as usize) >= n {
+                unsafe { std::ptr::copy_nonoverlapping(payload.as_ptr(), ptr, n) };
+            }
+            n as i32
+        };
+        match string_out_call(call) {
+            StringOut::Bytes(bytes) => assert_eq!(bytes.len(), expected_len),
+            _ => panic!("expected full payload after retry"),
+        }
+    }
+
+    #[test]
+    fn string_out_overflows_when_host_misreports() {
+        // Always demands more than offered, even after growing once.
+        match string_out_call(|_ptr, max| max.saturating_add(1024)) {
+            StringOut::Overflow { .. } => {}
+            _ => panic!("expected overflow"),
+        }
+    }
+
+    #[test]
+    fn scratch_is_reused_across_calls() {
+        let _ = string_out_call(writer(b"first"));
+        let cap_before = SCRATCH.with(|cell| cell.borrow().capacity());
+        let _ = string_out_call(writer(b"second"));
+        let cap_after = SCRATCH.with(|cell| cell.borrow().capacity());
+        assert_eq!(cap_before, cap_after);
+        assert!(cap_before >= SCRATCH_INITIAL_CAPACITY);
+    }
+
+    #[test]
+    fn reentrant_use_falls_back_without_panic() {
+        SCRATCH.with(|cell| {
+            let _guard = cell.borrow_mut();
+            match string_out_call(writer(b"ok")) {
+                StringOut::Bytes(bytes) => assert_eq!(bytes, b"ok"),
+                _ => panic!("expected bytes via fallback"),
+            }
+        });
+    }
+
+    #[test]
+    fn any_return_non_string_skips_buffer() {
+        let null = |out: *mut HostValueAbiOut, _ptr: *mut u8, _max: i32| {
+            unsafe { (*out).kind = HostValueKind::Null as i32 };
+            ExternRef::null()
+        };
+        assert_eq!(any_return(null), HostValueOut::Null);
+
+        let number = |out: *mut HostValueAbiOut, _ptr: *mut u8, _max: i32| {
+            unsafe {
+                (*out).kind = HostValueKind::Number as i32;
+                (*out).number_value = 42.5;
+            }
+            ExternRef::null()
+        };
+        assert_eq!(any_return(number), HostValueOut::Number(42.5));
+    }
+
+    #[test]
+    fn any_return_string_is_right_sized() {
+        let payload = b"hello";
+        let call = move |out: *mut HostValueAbiOut, ptr: *mut u8, max: i32| {
+            let n = payload.len();
+            unsafe {
+                (*out).kind = HostValueKind::String as i32;
+                (*out).string_required_length = n as i32;
+                if (max as usize) >= n {
+                    std::ptr::copy_nonoverlapping(payload.as_ptr(), ptr, n);
+                    (*out).string_written_length = n as i32;
+                }
+            }
+            ExternRef::null()
+        };
+        match any_return(call) {
+            HostValueOut::String {
+                bytes,
+                required_len,
+            } => {
+                assert_eq!(bytes, b"hello");
+                assert_eq!(required_len, 5);
+                assert!(bytes.capacity() < SCRATCH_INITIAL_CAPACITY);
+            }
+            other => panic!("expected string, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn string_borrow_lends_without_owning() {
+        let owned = string_borrow_call(writer(b"svg"), |bytes| bytes.map(<[u8]>::to_vec));
+        assert_eq!(owned, Some(b"svg".to_vec()));
+    }
+
+    #[test]
+    fn string_borrow_absent_on_negative() {
+        assert!(string_borrow_call(|_ptr, _max| -1, |bytes| bytes.is_none()));
+    }
+
+    #[test]
+    fn any_borrow_string_and_null() {
+        let payload = b"http://www.w3.org/2000/svg";
+        let str_call = move |out: *mut HostValueAbiOut, ptr: *mut u8, max: i32| {
+            let n = payload.len();
+            unsafe {
+                (*out).kind = HostValueKind::String as i32;
+                (*out).string_required_length = n as i32;
+                if (max as usize) >= n {
+                    std::ptr::copy_nonoverlapping(payload.as_ptr(), ptr, n);
+                    (*out).string_written_length = n as i32;
+                }
+            }
+            ExternRef::null()
+        };
+        assert!(any_borrow_call(str_call, |value| match value {
+            AnyBorrow::Str(bytes) => bytes == b"http://www.w3.org/2000/svg",
+            _ => false,
+        }));
+
+        let null_call = |out: *mut HostValueAbiOut, _ptr: *mut u8, _max: i32| {
+            unsafe { (*out).kind = HostValueKind::Null as i32 };
+            ExternRef::null()
+        };
+        assert!(any_borrow_call(null_call, |value| matches!(
+            value,
+            AnyBorrow::Null
+        )));
+    }
 }
