@@ -28,7 +28,6 @@ tracing = "0.1.44"
 
 [features]
 csr = []
-not_browser_env = []
 default = []
 test = []
 

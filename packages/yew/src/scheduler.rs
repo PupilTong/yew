@@ -3,34 +3,6 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
-#[cfg(any(test, feature = "test"))]
-mod flush_wakers {
-    use std::cell::RefCell;
-    use std::task::Waker;
-
-    thread_local! {
-        static FLUSH_WAKERS: RefCell<Vec<Waker>> = Default::default();
-    }
-
-    #[cfg(all(
-        target_arch = "wasm32",
-        not(target_os = "wasi"),
-        not(feature = "not_browser_env")
-    ))]
-    pub(super) fn register(waker: Waker) {
-        FLUSH_WAKERS.with(|w| {
-            w.borrow_mut().push(waker);
-        });
-    }
-
-    pub(super) fn wake_all() {
-        FLUSH_WAKERS.with(|w| {
-            for waker in w.borrow_mut().drain(..) {
-                waker.wake();
-            }
-        });
-    }
-}
 
 /// Alias for `Rc<RefCell<T>>`
 pub type Shared<T> = Rc<RefCell<T>>;
@@ -228,8 +200,6 @@ pub(crate) fn start_now() {
     LOCK.with(|l| {
         if let Ok(_lock) = l.try_borrow_mut() {
             scheduler_loop();
-            #[cfg(any(test, feature = "test"))]
-            flush_wakers::wake_all();
             // WAMR runtime: after the scheduler drains all pending render /
             // host-mutation work, trigger a commit so style + layout run
             // automatically on each cycle (initial mount and subsequent
