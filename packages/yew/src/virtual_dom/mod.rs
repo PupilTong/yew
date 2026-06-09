@@ -13,8 +13,6 @@ pub mod vnode;
 #[doc(hidden)]
 pub mod vportal;
 #[doc(hidden)]
-pub mod vsuspense;
-#[doc(hidden)]
 pub mod vtag;
 #[doc(hidden)]
 pub mod vtext;
@@ -38,8 +36,6 @@ pub use self::vlist::VList;
 pub use self::vnode::VNode;
 #[doc(inline)]
 pub use self::vportal::VPortal;
-#[doc(inline)]
-pub use self::vsuspense::VSuspense;
 #[doc(inline)]
 pub use self::vtag::VTag;
 #[doc(inline)]

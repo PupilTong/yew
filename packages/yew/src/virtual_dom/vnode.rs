@@ -7,7 +7,7 @@ use std::{fmt, mem};
 
 use lynx_sys::Element;
 
-use super::{Key, VChild, VComp, VList, VPortal, VSuspense, VTag, VText};
+use super::{Key, VChild, VComp, VList, VPortal, VTag, VText};
 use crate::html::{BaseComponent, ImplicitClone};
 
 /// Bind virtual element to a DOM reference.
@@ -28,8 +28,6 @@ pub enum VNode {
     /// shared via `Rc` so cloning a [`VNode`] does not duplicate the host
     /// reference wrapper.
     VRef(Rc<Element>),
-    /// A suspendible document fragment.
-    VSuspense(Rc<VSuspense>),
 }
 
 impl PartialEq for VNode {
@@ -46,7 +44,6 @@ impl PartialEq for VNode {
             (VNode::VRef(left), VNode::VRef(right)) => {
                 Rc::ptr_eq(left, right) || left.id() == right.id()
             }
-            (VNode::VSuspense(left), VNode::VSuspense(right)) => left == right,
             _ => false,
         }
     }
@@ -61,7 +58,6 @@ impl VNode {
             VNode::VTag(vtag) => vtag.key.as_ref(),
             VNode::VText(_) => None,
             VNode::VPortal(vportal) => vportal.node.key(),
-            VNode::VSuspense(vsuspense) => vsuspense.key.as_ref(),
         }
     }
 
@@ -119,13 +115,6 @@ impl From<VComp> for VNode {
     }
 }
 
-impl From<VSuspense> for VNode {
-    #[inline]
-    fn from(vsuspense: VSuspense) -> Self {
-        VNode::VSuspense(Rc::new(vsuspense))
-    }
-}
-
 impl From<VPortal> for VNode {
     #[inline]
     fn from(vportal: VPortal) -> Self {
@@ -165,7 +154,6 @@ impl fmt::Debug for VNode {
             VNode::VList(ref vlist) => vlist.fmt(f),
             VNode::VRef(ref vref) => write!(f, "VRef({:?})", vref.id()),
             VNode::VPortal(ref vportal) => vportal.fmt(f),
-            VNode::VSuspense(ref vsuspense) => vsuspense.fmt(f),
         }
     }
 }

@@ -24,7 +24,8 @@ use crate::virtual_dom::VPortal;
 /// A type which expected as a result of `view` function implementation.
 pub type Html = VNode;
 
-/// An enhanced type of `Html` returned in suspendible function components.
+/// A `Result`-wrapped [`Html`], used as the return type of component `view`
+/// methods. Currently always `Ok` — see [`RenderError`].
 pub type HtmlResult = RenderResult<Html>;
 
 impl Sealed for HtmlResult {}

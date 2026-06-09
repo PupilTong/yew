@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use lynx_sys::Element;
 
-use super::{BComp, BList, BPortal, BSubtree, BSuspense, BTag, BText, DomSlot};
+use super::{BComp, BList, BPortal, BSubtree, BTag, BText, DomSlot};
 use crate::dom_bundle::{Reconcilable, ReconcileTarget};
 use crate::html::AnyScope;
 use crate::utils::RcExt;
@@ -27,8 +27,6 @@ pub(super) enum BNode {
     /// shared via `Rc`; the user code that constructed the [`VNode::VRef`]
     /// keeps its own clone.
     Ref(Rc<Element>),
-    /// A suspendible document fragment.
-    Suspense(Box<BSuspense>),
 }
 
 impl BNode {
@@ -41,7 +39,6 @@ impl BNode {
             Self::Tag(btag) => btag.key(),
             Self::Text(_) => None,
             Self::Portal(bportal) => bportal.key(),
-            Self::Suspense(bsusp) => bsusp.key(),
         }
     }
 }
@@ -63,7 +60,6 @@ impl ReconcileTarget for BNode {
                 }
             }
             Self::Portal(bportal) => bportal.detach(root, parent, parent_to_detach),
-            Self::Suspense(bsusp) => bsusp.detach(root, parent, parent_to_detach),
         }
     }
 
@@ -79,7 +75,6 @@ impl ReconcileTarget for BNode {
                 DomSlot::at(id)
             }
             Self::Portal(ref vportal) => vportal.shift(next_parent, slot),
-            Self::Suspense(ref vsuspense) => vsuspense.shift(next_parent, slot),
         }
     }
 }
@@ -123,11 +118,6 @@ impl Reconcilable for VNode {
                 let (node_ref, portal) =
                     RcExt::unwrap_or_clone(vportal).attach(root, parent_scope, parent, slot);
                 (node_ref, portal.into())
-            }
-            VNode::VSuspense(vsuspsense) => {
-                let (node_ref, suspsense) =
-                    RcExt::unwrap_or_clone(vsuspsense).attach(root, parent_scope, parent, slot);
-                (node_ref, suspsense.into())
             }
         }
     }
@@ -192,13 +182,6 @@ impl Reconcilable for VNode {
                 slot,
                 bundle,
             ),
-            VNode::VSuspense(vsuspsense) => RcExt::unwrap_or_clone(vsuspsense).reconcile_node(
-                root,
-                parent_scope,
-                parent,
-                slot,
-                bundle,
-            ),
         }
     }
 }
@@ -238,13 +221,6 @@ impl From<BPortal> for BNode {
     }
 }
 
-impl From<BSuspense> for BNode {
-    #[inline]
-    fn from(bsusp: BSuspense) -> Self {
-        Self::Suspense(Box::new(bsusp))
-    }
-}
-
 impl fmt::Debug for BNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
@@ -254,7 +230,6 @@ impl fmt::Debug for BNode {
             Self::List(ref vlist) => vlist.fmt(f),
             Self::Ref(ref vref) => write!(f, "VRef({:?})", vref.id()),
             Self::Portal(ref vportal) => vportal.fmt(f),
-            Self::Suspense(ref bsusp) => bsusp.fmt(f),
         }
     }
 }

@@ -273,7 +273,6 @@ pub mod platform;
 pub mod scheduler;
 mod sealed;
 
-pub mod suspense;
 pub mod utils;
 pub mod virtual_dom;
 
@@ -320,7 +319,6 @@ pub mod prelude {
         NodeRef, Properties,
     };
     pub use crate::macros::{classes, html, html_nested};
-    pub use crate::suspense::Suspense;
     pub use crate::virtual_dom::AttrValue;
 }
 

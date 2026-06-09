@@ -16,8 +16,8 @@ pub(super) trait ReconcileTarget {
     fn detach(self, root: &BSubtree, parent: &Rc<Element>, parent_to_detach: bool);
 
     /// Move elements from one parent to another parent.
-    /// This is for example used by `VSuspense` to preserve component state without detaching
-    /// (which destroys component state).
+    /// This is for example used when a portal's mount point shifts, to preserve
+    /// component state without detaching (which destroys component state).
     fn shift(&self, next_parent: &Rc<Element>, slot: DomSlot) -> DomSlot;
 }
 
