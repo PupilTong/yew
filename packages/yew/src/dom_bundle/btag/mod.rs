@@ -9,7 +9,7 @@ use std::rc::Rc;
 
 use listeners::ListenerRegistration;
 pub use listeners::Registry;
-use rust_wasm_binding::{Element, NodeOps};
+use lynx_sys::Element;
 
 use super::{BNode, BSubtree, DomSlot, Reconcilable, ReconcileTarget};
 use crate::html::AnyScope;
@@ -57,10 +57,9 @@ pub(super) struct BTag {
     inner: BTagInner,
     listeners: ListenerRegistration,
     attributes: Attributes,
-    /// RAII handle for the created element node. Wrapped in `Rc` so child
+    /// Handle for the created element node. Wrapped in `Rc` so child
     /// components / bundles can pass `&self.reference` (an `&Rc<Element>`)
-    /// down their attach/reconcile chains as the parent. The last drop of
-    /// the `Rc` releases the host-side slab slot.
+    /// down their attach/reconcile chains as the parent.
     reference: Rc<Element>,
     /// A node reference used for DOM access in Component lifecycle methods
     node_ref: NodeRef,
@@ -81,8 +80,8 @@ impl ReconcileTarget for BTag {
         listeners.unregister(root);
         let node_id = reference.id();
 
-        // Remove subtree branding and cached keys so that if the Paws
-        // slab recycles this id, stale entries don't misroute events.
+        // Remove subtree branding and cached keys so stale entries don't
+        // misroute future events.
         root.unbrand_element(node_id);
 
         // Recursively detach children FIRST so listeners are cleaned up
@@ -92,20 +91,15 @@ impl ReconcileTarget for BTag {
         }
 
         if parent_to_detach {
-            // Parent is going away; the host will cascade `destroy_element`
-            // through the entire subtree. Disarm this wrapper's Drop to
-            // avoid a double-destroy on a slab id that may have been
-            // recycled by the time this Rc is released.
+            // Parent is going away; detach bookkeeping is enough here.
             if let Some(element) = Rc::into_inner(reference) {
                 element.into_raw();
             }
         } else {
-            // Physically detach from the parent, then let Drop run
-            // `destroy_element` on the slab entry.
-            if let Err(err) = rust_wasm_binding::remove_child(parent.id(), node_id) {
+            // Physically detach from the parent.
+            if let Err(err) = lynx_sys::remove_child(parent.id(), node_id) {
                 tracing::warn!(?err, "Node not found to remove VTag");
             }
-            // `reference` drops here → destroy_element
         }
 
         // It could be that the ref was already reused when rendering another element.
@@ -296,7 +290,7 @@ fn parent_namespace_is(parent: &Element, expected: &str) -> bool {
     // owned `String`; namespace detection never invents SVG context
     // where there isn't one, so missing / erroring values fall through
     // to `false`.
-    match rust_wasm_binding::get_namespace_uri(parent.id()) {
+    match lynx_sys::get_namespace_uri(parent.id()) {
         Ok(Some(uri)) => uri == expected,
         _ => false,
     }

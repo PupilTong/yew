@@ -3,45 +3,30 @@ use std::collections::HashMap;
 use std::ops::Deref;
 use std::rc::Rc;
 
-use rust_wasm_binding::{Element, NodeOps};
+use lynx_sys::{Element, ExternRef};
 
 use super::Apply;
 use crate::dom_bundle::{test_log, BSubtree, EventDescriptor};
 use crate::virtual_dom::{Listener, Listeners};
 
 thread_local! {
-    /// Duck-typed JS properties in upstream yew (`__yew_listener_id`) are
-    /// replaced on the Paws fork with a guest-side map keyed on the Paws node
-    /// id. Entries are cleaned up explicitly from [`ListenerRegistration`]
-    /// detach paths; there is no GC backstop.
-    static LISTENER_IDS: RefCell<HashMap<i32, u32>> = RefCell::new(HashMap::new());
+    /// Duck-typed properties in upstream yew (`__yew_listener_id`) are
+    /// replaced with listener metadata keyed directly on the host reference.
+    /// Entries are cleaned up explicitly from [`ListenerRegistration`] detach
+    /// paths; there is no GC backstop.
+    static LISTENER_IDS: RefCell<HashMap<ExternRef, u32>> = RefCell::new(HashMap::new());
 }
 
-fn take_listener_id(el: i32) -> Option<u32> {
-    LISTENER_IDS.with(|map| map.borrow().get(&el).copied())
-}
-
-fn store_listener_id(el: i32, id: u32) {
+fn store_listener_id(el: ExternRef, id: u32) {
     LISTENER_IDS.with(|map| {
         map.borrow_mut().insert(el, id);
     });
 }
 
-fn forget_listener_id(el: i32) {
+fn forget_listener_id(el: ExternRef) {
     LISTENER_IDS.with(|map| {
         map.borrow_mut().remove(&el);
     });
-}
-
-/// DOM-Types that can have listeners registered on them.
-pub trait EventListening {
-    fn listener_id(&self) -> Option<u32>;
-}
-
-impl EventListening for i32 {
-    fn listener_id(&self) -> Option<u32> {
-        take_listener_id(*self)
-    }
 }
 
 /// An active set of listeners on an element
@@ -49,9 +34,9 @@ impl EventListening for i32 {
 pub(super) enum ListenerRegistration {
     /// No listeners registered.
     NoReg,
-    /// Added to global registry by ID, along with the element id used for
-    /// cleanup from the guest-side [`LISTENER_IDS`] map.
-    Registered { id: u32, el: i32 },
+    /// Added to global registry by ID, along with the element reference used
+    /// for cleanup from [`LISTENER_IDS`].
+    Registered { id: u32, el: ExternRef },
 }
 
 impl Apply for Listeners {
@@ -138,27 +123,6 @@ impl Registry {
             id_counter: u32::default(),
             by_id: HashMap::default(),
         }
-    }
-
-    /// Handle a single event, given the listening element and event descriptor.
-    pub fn get_handler(
-        registry: &RefCell<Registry>,
-        listening: &dyn EventListening,
-        desc: &EventDescriptor,
-    ) -> Option<impl FnOnce()> {
-        // The tricky part is that we want to drop the reference to the registry before
-        // calling any actual listeners (since that might end up running lifecycle methods
-        // and modify the registry). So we clone the current listeners and return a closure
-        let listener_id = listening.listener_id()?;
-        let registry_ref = registry.borrow();
-        let handlers = registry_ref.by_id.get(&listener_id)?;
-        let listeners = handlers.get(desc)?.clone();
-        drop(registry_ref); // unborrow the registry, before running any listeners
-        Some(move || {
-            for l in listeners {
-                l.handle(());
-            }
-        })
     }
 
     /// Register all passed listeners under ID

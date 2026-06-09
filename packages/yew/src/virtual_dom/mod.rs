@@ -13,8 +13,6 @@ pub mod vnode;
 #[doc(hidden)]
 pub mod vportal;
 #[doc(hidden)]
-pub mod vsuspense;
-#[doc(hidden)]
 pub mod vtag;
 #[doc(hidden)]
 pub mod vtext;
@@ -39,8 +37,6 @@ pub use self::vnode::VNode;
 #[doc(inline)]
 pub use self::vportal::VPortal;
 #[doc(inline)]
-pub use self::vsuspense::VSuspense;
-#[doc(inline)]
 pub use self::vtag::VTag;
 #[doc(inline)]
 pub use self::vtext::VText;
@@ -50,9 +46,9 @@ pub type AttrValue = implicit_clone::unsync::IString;
 
 /// Defines if the [`Attributes`] is set as element's attribute or property and its value.
 ///
-/// In the Paws fork the historical `Property(JsValue)` variant has been
-/// collapsed into [`AttributeOrProperty::Attribute`] as a placeholder: Paws
-/// does not yet expose a `set_property` host function, so every "property"
+/// In the WAMR runtime the historical property variant has been collapsed into
+/// [`AttributeOrProperty::Attribute`] as a placeholder: the host does not yet
+/// expose a `set_property` function, so every "property"
 /// value goes through `set_attribute` on the stringified form. The macro
 /// still accepts `~prop_name = …` syntax; the value is `ToString`-formatted
 /// at macro-expansion time.

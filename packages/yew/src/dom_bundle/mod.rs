@@ -7,7 +7,7 @@
 
 use std::rc::Rc;
 
-use rust_wasm_binding::Element;
+use lynx_sys::Element;
 
 use crate::html::AnyScope;
 use crate::virtual_dom::VNode;
@@ -16,7 +16,6 @@ mod bcomp;
 mod blist;
 mod bnode;
 mod bportal;
-mod bsuspense;
 mod btag;
 mod btext;
 mod position;
@@ -29,12 +28,11 @@ use bcomp::BComp;
 use blist::BList;
 use bnode::BNode;
 use bportal::BPortal;
-use bsuspense::BSuspense;
 use btag::{BTag, Registry};
 use btext::BText;
 pub(crate) use position::{DomSlot, DynamicDomSlot};
+pub use subtree_root::BSubtree;
 use subtree_root::EventDescriptor;
-pub use subtree_root::{set_event_bubbling, BSubtree};
 use traits::{Reconcilable, ReconcileTarget};
 use utils::test_log;
 

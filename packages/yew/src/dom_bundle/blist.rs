@@ -6,7 +6,7 @@ use std::hash::Hash;
 use std::ops::Deref;
 use std::rc::Rc;
 
-use rust_wasm_binding::Element;
+use lynx_sys::Element;
 
 use super::{test_log, BNode, BSubtree, DomSlot};
 use crate::dom_bundle::{Reconcilable, ReconcileTarget};

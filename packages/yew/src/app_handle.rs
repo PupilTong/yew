@@ -3,7 +3,7 @@
 use std::ops::Deref;
 use std::rc::Rc;
 
-use rust_wasm_binding::{Element, NodeOps};
+use lynx_sys::Element;
 
 use crate::dom_bundle::{BSubtree, DomSlot};
 use crate::html::{BaseComponent, Scope, Scoped};
@@ -79,7 +79,7 @@ where
 
 /// Removes anything from the given element.
 fn clear_element(host: &Element) {
-    while let Some(child) = rust_wasm_binding::get_last_child(host.id()) {
-        rust_wasm_binding::remove_child(host.id(), child).expect("can't remove a child");
+    while let Some(child) = lynx_sys::get_last_child(host.id()) {
+        lynx_sys::remove_child(host.id(), child).expect("can't remove a child");
     }
 }

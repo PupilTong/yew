@@ -4,16 +4,15 @@ use std::any::Any;
 use std::rc::Rc;
 
 #[cfg(feature = "csr")]
-use rust_wasm_binding::Element;
+use lynx_sys::Element;
 
 use super::scope::{AnyScope, Scope};
 use super::BaseComponent;
 #[cfg(feature = "csr")]
 use crate::dom_bundle::{BSubtree, Bundle, DomSlot, DynamicDomSlot};
-use crate::html::{Html, RenderError};
+use crate::html::Html;
 use crate::scheduler::{self, Runnable, Shared};
-use crate::suspense::{BaseSuspense, Suspension};
-use crate::{Callback, Context, HtmlResult};
+use crate::{Context, HtmlResult};
 
 pub(crate) enum ComponentRenderState {
     #[cfg(feature = "csr")]
@@ -166,8 +165,6 @@ pub(crate) struct ComponentState {
     #[cfg(feature = "csr")]
     has_rendered: bool,
 
-    suspension: Option<Suspension>,
-
     pub(crate) comp_id: usize,
 }
 
@@ -195,7 +192,6 @@ impl ComponentState {
         Self {
             inner,
             render_state: initial_render_state,
-            suspension: None,
 
             #[cfg(feature = "csr")]
             has_rendered: false,
@@ -212,15 +208,6 @@ impl ComponentState {
             .as_any()
             .downcast_ref::<CompStateInner<COMP>>()
             .map(|m| &m.component)
-    }
-
-    fn resume_existing_suspension(&mut self) {
-        if let Some(m) = self.suspension.take() {
-            let comp_scope = self.inner.any_scope();
-
-            let suspense_scope = comp_scope.find_parent_scope::<BaseSuspense>().unwrap();
-            BaseSuspense::resume(&suspense_scope, m);
-        }
     }
 }
 
@@ -291,7 +278,6 @@ impl ComponentState {
     )]
     fn destroy(mut self, parent_to_detach: bool) {
         self.inner.destroy();
-        self.resume_existing_suspension();
 
         match self.render_state {
             #[cfg(feature = "csr")]
@@ -330,59 +316,12 @@ impl ComponentState {
         tracing::trace!(?view, "render result");
         match view {
             Ok(vnode) => self.commit_render(shared_state, vnode),
-            Err(RenderError::Suspended(susp)) => self.suspend(shared_state, susp),
+            // `RenderError` is uninhabited now that suspense is removed.
+            Err(err) => match err {},
         };
     }
 
-    fn suspend(&mut self, shared_state: &Shared<Option<ComponentState>>, suspension: Suspension) {
-        // Currently suspended, we re-use previous root node and send
-        // suspension to parent element.
-
-        if suspension.resumed() {
-            // schedule a render immediately if suspension is resumed.
-            scheduler::push_component_render(
-                self.comp_id,
-                Box::new(RenderRunner {
-                    state: shared_state.clone(),
-                }),
-            );
-        } else {
-            // We schedule a render after current suspension is resumed.
-            let comp_scope = self.inner.any_scope();
-
-            let suspense_scope = comp_scope
-                .find_parent_scope::<BaseSuspense>()
-                .expect("To suspend rendering, a <Suspense /> component is required.");
-
-            let comp_id = self.comp_id;
-            let shared_state = shared_state.clone();
-            suspension.listen(Callback::from(move |_| {
-                scheduler::push_component_render(
-                    comp_id,
-                    Box::new(RenderRunner {
-                        state: shared_state.clone(),
-                    }),
-                );
-                scheduler::start();
-            }));
-
-            if let Some(ref last_suspension) = self.suspension {
-                if &suspension != last_suspension {
-                    // We remove previous suspension from the suspense.
-                    BaseSuspense::resume(&suspense_scope, last_suspension.clone());
-                }
-            }
-            self.suspension = Some(suspension.clone());
-
-            BaseSuspense::suspend(&suspense_scope, suspension);
-        }
-    }
-
     fn commit_render(&mut self, shared_state: &Shared<Option<ComponentState>>, new_vdom: Html) {
-        // Currently not suspended, we remove any previous suspension and update
-        // normally.
-        self.resume_existing_suspension();
-
         match self.render_state {
             #[cfg(feature = "csr")]
             ComponentRenderState::Render {
@@ -512,9 +451,7 @@ mod feat_csr {
             fields(component.id = self.comp_id)
         )]
         fn rendered(&mut self, first_render: bool) -> bool {
-            if self.suspension.is_none() {
-                self.inner.rendered(first_render);
-            }
+            self.inner.rendered(first_render);
 
             false
         }

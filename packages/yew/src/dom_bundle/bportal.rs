@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use rust_wasm_binding::{Element, NodeOps};
+use lynx_sys::{Element, ExternRef};
 
 use super::{test_log, BNode, BSubtree, DomSlot};
 use crate::dom_bundle::{Reconcilable, ReconcileTarget};
@@ -18,8 +18,8 @@ pub struct BPortal {
     /// `Rc<Element>` so the user code can keep its own clone of the host
     /// alive while yew renders into it.
     host: Rc<Element>,
-    /// The next sibling after the inserted content (Paws node id).
-    inner_sibling: Option<i32>,
+    /// The next sibling after the inserted content.
+    inner_sibling: Option<ExternRef>,
     /// The inserted node
     node: Box<BNode>,
 }
@@ -43,7 +43,7 @@ impl Reconcilable for VPortal {
         self,
         root: &BSubtree,
         parent_scope: &AnyScope,
-        parent: &Rc<Element>,
+        _parent: &Rc<Element>,
         host_slot: DomSlot,
     ) -> (DomSlot, Self::Bundle) {
         let Self {
@@ -52,7 +52,7 @@ impl Reconcilable for VPortal {
             node,
         } = self;
         let inner_slot = DomSlot::create(inner_sibling);
-        let inner_root = root.create_subroot(parent, &host);
+        let inner_root = root.create_subroot(&host);
         let (_, inner) = node.attach(&inner_root, parent_scope, &host, inner_slot);
         (
             host_slot,

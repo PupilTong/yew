@@ -3,7 +3,7 @@ use std::panic::PanicHookInfo as PanicInfo;
 use std::rc::Rc;
 
 #[cfg(feature = "csr")]
-use rust_wasm_binding::Element;
+use lynx_sys::Element;
 
 use crate::app_handle::AppHandle;
 use crate::html::BaseComponent;
@@ -14,8 +14,8 @@ thread_local! {
 
 /// Set a custom panic hook.
 ///
-/// In the Paws fork the default panic hook is the Rust standard one (no
-/// JS bridge), so this helper is only useful if a host wants to inject its
+/// In the WAMR runtime the default panic hook is the Rust standard one, so
+/// this helper is only useful if a host wants to inject its
 /// own structured panic handler.
 #[cfg(feature = "csr")]
 #[allow(clippy::incompatible_msrv)]
@@ -28,10 +28,9 @@ pub fn set_custom_panic_hook(hook: Box<dyn Fn(&PanicInfo<'_>) + Sync + Send + 's
 ///
 /// This is the main entry point of a Yew application.
 ///
-/// Unlike upstream yew the Paws fork does not fall back to
-/// `document.body()` — there is no browser document to query. Callers
-/// always pass an `Rc<Element>` host they own (so the Paws slab entry stays
-/// alive as long as the renderer references it).
+/// Unlike upstream yew this runtime does not fall back to a browser document
+/// root. Callers always pass an `Rc<Element>` host they own, keeping the
+/// externref alive as long as the renderer references it.
 #[cfg(feature = "csr")]
 #[derive(Debug)]
 #[must_use = "Renderer does nothing unless render() is called."]
@@ -39,8 +38,8 @@ pub struct Renderer<COMP>
 where
     COMP: BaseComponent + 'static,
 {
-    /// Shared handle to the host element. The renderer keeps an `Rc` so
-    /// the Paws slab id remains valid for the entire app lifetime.
+    /// Shared handle to the host element. The renderer keeps an `Rc` so the
+    /// host externref remains valid for the entire app lifetime.
     root: Rc<Element>,
     props: COMP::Properties,
 }

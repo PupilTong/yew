@@ -3,9 +3,9 @@
 use std::fmt;
 use std::rc::Rc;
 
-use rust_wasm_binding::{Element, NodeOps};
+use lynx_sys::Element;
 
-use super::{BComp, BList, BPortal, BSubtree, BSuspense, BTag, BText, DomSlot};
+use super::{BComp, BList, BPortal, BSubtree, BTag, BText, DomSlot};
 use crate::dom_bundle::{Reconcilable, ReconcileTarget};
 use crate::html::AnyScope;
 use crate::utils::RcExt;
@@ -24,12 +24,9 @@ pub(super) enum BNode {
     /// A portal to another part of the document
     Portal(BPortal),
     /// A holder for a raw, user-supplied DOM element node. The wrapper is
-    /// shared via `Rc` so the bundle does not own the underlying slab id —
-    /// the user code that constructed the [`VNode::VRef`] keeps its own
-    /// clone.
+    /// shared via `Rc`; the user code that constructed the [`VNode::VRef`]
+    /// keeps its own clone.
     Ref(Rc<Element>),
-    /// A suspendible document fragment.
-    Suspense(Box<BSuspense>),
 }
 
 impl BNode {
@@ -42,7 +39,6 @@ impl BNode {
             Self::Tag(btag) => btag.key(),
             Self::Text(_) => None,
             Self::Portal(bportal) => bportal.key(),
-            Self::Suspense(bsusp) => bsusp.key(),
         }
     }
 }
@@ -59,12 +55,11 @@ impl ReconcileTarget for BNode {
                 // Always remove user-defined nodes to clear possible parent references of them.
                 // The `Rc<Element>` is *not* dropped here — the user code that constructed
                 // the [`VNode::VRef`] still holds its own clone of the handle.
-                if rust_wasm_binding::remove_child(parent.id(), node.id()).is_err() {
+                if lynx_sys::remove_child(parent.id(), node.id()).is_err() {
                     tracing::warn!("Node not found to remove VRef");
                 }
             }
             Self::Portal(bportal) => bportal.detach(root, parent, parent_to_detach),
-            Self::Suspense(bsusp) => bsusp.detach(root, parent, parent_to_detach),
         }
     }
 
@@ -80,7 +75,6 @@ impl ReconcileTarget for BNode {
                 DomSlot::at(id)
             }
             Self::Portal(ref vportal) => vportal.shift(next_parent, slot),
-            Self::Suspense(ref vsuspense) => vsuspense.shift(next_parent, slot),
         }
     }
 }
@@ -124,11 +118,6 @@ impl Reconcilable for VNode {
                 let (node_ref, portal) =
                     RcExt::unwrap_or_clone(vportal).attach(root, parent_scope, parent, slot);
                 (node_ref, portal.into())
-            }
-            VNode::VSuspense(vsuspsense) => {
-                let (node_ref, suspsense) =
-                    RcExt::unwrap_or_clone(vsuspsense).attach(root, parent_scope, parent, slot);
-                (node_ref, suspsense.into())
             }
         }
     }
@@ -176,8 +165,9 @@ impl Reconcilable for VNode {
                 bundle,
             ),
             VNode::VRef(node) => match bundle {
-                // Compare by slab id (identity). Two distinct `Rc<Element>`s
-                // pointing at the same id should be treated as the same node.
+                // Compare by host reference identity. Two distinct
+                // `Rc<Element>`s pointing at the same host node should be
+                // treated as the same node.
                 BNode::Ref(existing)
                     if Rc::ptr_eq(&node, existing) || node.id() == existing.id() =>
                 {
@@ -186,13 +176,6 @@ impl Reconcilable for VNode {
                 _ => VNode::VRef(node).replace(root, parent_scope, parent, slot, bundle),
             },
             VNode::VPortal(vportal) => RcExt::unwrap_or_clone(vportal).reconcile_node(
-                root,
-                parent_scope,
-                parent,
-                slot,
-                bundle,
-            ),
-            VNode::VSuspense(vsuspsense) => RcExt::unwrap_or_clone(vsuspsense).reconcile_node(
                 root,
                 parent_scope,
                 parent,
@@ -238,13 +221,6 @@ impl From<BPortal> for BNode {
     }
 }
 
-impl From<BSuspense> for BNode {
-    #[inline]
-    fn from(bsusp: BSuspense) -> Self {
-        Self::Suspense(Box::new(bsusp))
-    }
-}
-
 impl fmt::Debug for BNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
@@ -252,9 +228,8 @@ impl fmt::Debug for BNode {
             Self::Text(ref btext) => btext.fmt(f),
             Self::Comp(ref bsusp) => bsusp.fmt(f),
             Self::List(ref vlist) => vlist.fmt(f),
-            Self::Ref(ref vref) => write!(f, "VRef({})", vref.id()),
+            Self::Ref(ref vref) => write!(f, "VRef({:?})", vref.id()),
             Self::Portal(ref vportal) => vportal.fmt(f),
-            Self::Suspense(ref bsusp) => bsusp.fmt(f),
         }
     }
 }

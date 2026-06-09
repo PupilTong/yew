@@ -143,30 +143,16 @@ impl HookContext {
     ///
     /// This function asserts that the number of hooks matches for every render.
     #[cfg(debug_assertions)]
-    fn assert_hook_context(&mut self, render_ok: bool) {
-        // Procedural Macros can catch most conditionally called hooks at compile time, but it
-        // cannot detect early return (as the return can be Err(_), Suspension).
-        match (render_ok, self.total_hook_counter) {
-            // First rendered,
-            // we store the hook counter.
-            (true, None) => {
+    fn assert_hook_context(&mut self) {
+        // Procedural Macros catch most conditionally called hooks at compile time.
+        match self.total_hook_counter {
+            // First render: store the hook counter.
+            None => {
                 self.total_hook_counter = Some(self.counter);
             }
-            // Component is suspended before it's first rendered.
-            // We don't have a total count to compare with.
-            (false, None) => {}
-
-            // Subsequent render,
-            // we compare stored total count and current render count.
-            (true, Some(total_hook_counter)) => assert_eq!(
+            // Subsequent render: the count must match the first render exactly.
+            Some(total_hook_counter) => assert_eq!(
                 total_hook_counter, self.counter,
-                "Hooks are called conditionally."
-            ),
-
-            // Subsequent suspension,
-            // components can have less hooks called when suspended, but not more.
-            (false, Some(total_hook_counter)) => assert!(
-                self.counter <= total_hook_counter,
                 "Hooks are called conditionally."
             ),
         }
@@ -185,10 +171,6 @@ impl HookContext {
         for state in self.states.drain(..) {
             drop(state);
         }
-    }
-
-    fn prepare_state(&self) -> Option<String> {
-        None
     }
 }
 
@@ -259,7 +241,7 @@ where
         let result = T::run(&mut hook_ctx, props);
 
         #[cfg(debug_assertions)]
-        hook_ctx.assert_hook_context(result.is_ok());
+        hook_ctx.assert_hook_context();
 
         result
     }
@@ -274,12 +256,6 @@ where
     pub fn destroy(&self) {
         let mut hook_ctx = self.hook_ctx.borrow_mut();
         hook_ctx.drain_states();
-    }
-
-    /// Prepares the server-side state.
-    pub fn prepare_state(&self) -> Option<String> {
-        let hook_ctx = self.hook_ctx.borrow();
-        hook_ctx.prepare_state()
     }
 }
 

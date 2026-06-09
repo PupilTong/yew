@@ -34,7 +34,7 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
-          targets: wasm32-unknown-unknown
+          targets: wasm32-wasip1
 
       - name: Restore Rust cache for yew packages
         uses: Swatinem/rust-cache@v2

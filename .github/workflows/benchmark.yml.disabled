@@ -36,7 +36,7 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
-          targets: wasm32-unknown-unknown
+          targets: wasm32-wasip1
 
       - name: Setup wasm-pack
         uses: jetli/wasm-pack-action@v0.4.0
@@ -79,7 +79,7 @@ jobs:
       - name: Build benchmark-struct app
         working-directory: yew/tools/benchmark-struct
         run: |
-          RUSTFLAGS='--cfg getrandom_backend="wasm_js"' wasm-pack build \
+          wasm-pack build \
             --release \
             --target web \
             --no-typescript \
@@ -101,7 +101,7 @@ jobs:
       - name: Build benchmark-hooks app
         working-directory: yew/tools/benchmark-hooks
         run: |
-          RUSTFLAGS='--cfg getrandom_backend="wasm_js"' wasm-pack build \
+          wasm-pack build \
             --release \
             --target web \
             --no-typescript \

@@ -47,7 +47,7 @@ jobs:
         with:
           toolchain: nightly
           components: rust-src
-          targets: wasm32-unknown-unknown
+          targets: wasm32-wasip1
 
       - name: Restore Rust cache
         uses: Swatinem/rust-cache@v2

@@ -34,11 +34,11 @@
 
 ## About
 
-**Yew** is a modern Rust framework for creating multi-threaded, front-end web apps with WebAssembly.
+**Yew** is a modern Rust framework for creating front-end apps with WebAssembly.
 
-* Features a macro for declaring interactive HTML with Rust expressions. Developers who have experience using JSX in React should feel quite at home when using Yew.
-* Achieves high performance by minimizing DOM API calls for each page render and by making it easy to offload processing to background web workers.
-* Supports JavaScript interoperability, allowing developers to leverage NPM packages and integrate with existing JavaScript applications.
+* Features a macro for declaring interactive HTML with Rust expressions.
+* Targets `wasm32-wasip1` and runs through the WAMR host-function ABI.
+* Achieves high performance by minimizing host element-tree mutations for each render.
 
 Yew is named after a type of evergreen tree, and is pronounced /juː/. [Entry with audio on Cambridge Dictionary](https://dictionary.cambridge.org/dictionary/english/yew).
 

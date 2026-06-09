@@ -4,10 +4,10 @@ use crate::html::ImplicitClone;
 
 /// The [Listener] trait is a universal implementation of an event listener.
 ///
-/// In the Paws fork the event payload is a unit type: yew only knows that
+/// In the WAMR runtime the event payload is a unit type: yew only knows that
 /// "an event of kind X fired on target Y". Event-specific state (target,
 /// phase, modifier keys, etc.) is queried from the host side during dispatch
-/// via the `rust_wasm_binding::event_*` helpers, not threaded through the
+/// via the `lynx_sys::event_*` helpers, not threaded through the
 /// closure signature.
 pub trait Listener {
     /// Returns the name of the event

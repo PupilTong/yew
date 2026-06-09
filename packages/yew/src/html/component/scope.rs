@@ -232,10 +232,10 @@ impl<COMP: BaseComponent> Scope<COMP> {
         Fut::Output: SendAsMessage<COMP>,
     {
         let link = self.clone();
-        let js_future = async move {
+        let future = async move {
             future.await.send(&link);
         };
-        spawn_local(js_future);
+        spawn_local(future);
     }
 
     /// This method asynchronously awaits a [`Stream`] that returns a series of messages and sends
@@ -257,14 +257,14 @@ impl<COMP: BaseComponent> Scope<COMP> {
         S: Stream<Item = M> + 'static,
     {
         let link = self.clone();
-        let js_future = async move {
+        let future = async move {
             futures::pin_mut!(stream);
             while let Some(msg) = stream.next().await {
                 let message: COMP::Message = msg.into();
                 link.send_message(message);
             }
         };
-        spawn_local(js_future);
+        spawn_local(future);
     }
 
     /// Returns the linked component if available
@@ -290,7 +290,7 @@ impl<COMP: BaseComponent> Scope<COMP> {
 }
 
 #[cfg(not(feature = "csr"))]
-mod feat_no_csr_ssr {
+mod feat_no_csr {
     use super::*;
 
     // Skeleton code to provide public methods when no renderer are enabled.
@@ -310,7 +310,7 @@ mod feat_no_csr_ssr {
 }
 
 #[cfg(feature = "csr")]
-mod feat_csr_ssr {
+mod feat_csr_messages {
     use std::cell::{Ref, RefCell};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -422,13 +422,13 @@ mod feat_csr_ssr {
 }
 
 #[cfg(feature = "csr")]
-pub(crate) use feat_csr_ssr::*;
+pub(crate) use feat_csr_messages::*;
 
 #[cfg(feature = "csr")]
 mod feat_csr {
     use std::cell::Ref;
 
-    use rust_wasm_binding::Element;
+    use lynx_sys::Element;
 
     use super::*;
     use crate::dom_bundle::{BSubtree, Bundle, DomSlot, DynamicDomSlot};

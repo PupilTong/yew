@@ -14,7 +14,7 @@ pub use component::*;
 pub use conversion::*;
 pub use error::*;
 pub use listener::*;
-use rust_wasm_binding::Element;
+use lynx_sys::Element;
 
 use crate::sealed::Sealed;
 use crate::virtual_dom::VNode;
@@ -24,7 +24,8 @@ use crate::virtual_dom::VPortal;
 /// A type which expected as a result of `view` function implementation.
 pub type Html = VNode;
 
-/// An enhanced type of `Html` returned in suspendible function components.
+/// A `Result`-wrapped [`Html`], used as the return type of component `view`
+/// methods. Currently always `Ok` — see [`RenderError`].
 pub type HtmlResult = RenderResult<Html>;
 
 impl Sealed for HtmlResult {}
@@ -53,8 +54,8 @@ impl IntoHtmlResult for Html {
 ///
 /// Stores an `Rc<Element>` handle to the underlying DOM node, giving user
 /// code type-safe access to the element and keeping it alive via shared
-/// ownership. Query element state through the [`rust_wasm_binding::ElementOps`]
-/// / [`rust_wasm_binding::NodeOps`] traits on the returned handle.
+/// ownership. Query element state through the [`lynx_sys::ElementOps`]
+/// / [`lynx_sys::NodeOps`] traits on the returned handle.
 #[derive(Default, Clone, ImplicitClone)]
 pub struct NodeRef(Rc<RefCell<NodeRefInner>>);
 
@@ -66,7 +67,6 @@ impl PartialEq for NodeRef {
 
 impl std::fmt::Debug for NodeRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use rust_wasm_binding::NodeOps;
         write!(
             f,
             "NodeRef {{ references: {:?} }}",

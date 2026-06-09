@@ -135,7 +135,7 @@ pub fn push(runnable: Box<dyn Runnable>) {
 }
 
 #[cfg(feature = "csr")]
-mod feat_csr_ssr {
+mod feat_csr_components {
     use super::*;
     /// Push a component creation, first render and first rendered [Runnable]s to be executed
     pub(crate) fn push_component_create(
@@ -168,7 +168,7 @@ mod feat_csr_ssr {
 }
 
 #[cfg(feature = "csr")]
-pub(crate) use feat_csr_ssr::*;
+pub(crate) use feat_csr_components::*;
 
 #[cfg(feature = "csr")]
 mod feat_csr {
@@ -204,7 +204,14 @@ pub(crate) fn start_now() {
         loop {
             with(|s| s.fill_queue(&mut queue));
             if queue.is_empty() {
-                break;
+                // The render/lifecycle queue is drained. Advance any spawned
+                // futures (async messages, resolved suspensions); they may
+                // enqueue fresh work, which the next pass picks up.
+                crate::platform::drive_spawned_tasks();
+                with(|s| s.fill_queue(&mut queue));
+                if queue.is_empty() {
+                    break;
+                }
             }
             for r in queue.drain(..) {
                 r.task.run();
@@ -223,8 +230,8 @@ pub(crate) fn start_now() {
             scheduler_loop();
             #[cfg(any(test, feature = "test"))]
             flush_wakers::wake_all();
-            // Paws fork: after the scheduler drains all pending render /
-            // DOM-mutation work, trigger a commit so style + layout run
+            // WAMR runtime: after the scheduler drains all pending render /
+            // host-mutation work, trigger a commit so style + layout run
             // automatically on each cycle (initial mount and subsequent
             // re-renders alike). The commit is a no-op if the host hasn't
             // wired `__commit` to anything.
@@ -233,19 +240,16 @@ pub(crate) fn start_now() {
             // the scheduler without a linked `__commit` symbol.
             #[cfg(target_arch = "wasm32")]
             {
-                let _ = rust_wasm_binding::commit();
+                let _ = lynx_sys::commit();
             }
         }
     });
 }
 
 mod arch {
-    // Paws fork: delayed rendering / browser-main-thread yielding is not
-    // useful when there is no event loop to yield to. The scheduler is
-    // driven synchronously — the host drains queues end-to-end on each
-    // call from the guest, and dispatched events run inline. This is the
-    // same shape upstream yew used for its non-browser code path
-    // (server-side rendering, WASI).
+    // WAMR/WASI runtime: the scheduler is driven synchronously. The host
+    // drains queues end-to-end on each call from the guest, and dispatched
+    // events run inline.
     pub(crate) fn start() {
         super::start_now();
     }
@@ -254,11 +258,11 @@ mod arch {
 pub(crate) use arch::*;
 
 /// Synchronously flush all pending scheduler work. Drains all pending
-/// render and lifecycle tasks. On the Paws fork the scheduler has no
-/// event loop; all rendering is driven synchronously. Thin alias for
+/// render and lifecycle tasks. In the WAMR/WASI runtime all rendering is
+/// driven synchronously. Thin alias for
 /// [`start_now`].
 ///
-/// Call this after [`dispatch_event`](rust_wasm_binding::dispatch_event)
+/// Call this after [`dispatch_event`](lynx_sys::dispatch_event)
 /// in WASM fixtures so that state updates triggered by event callbacks
 /// are re-rendered before `run()` returns.
 pub fn flush() {
@@ -305,7 +309,7 @@ impl Scheduler {
 
         // Priority rendering
         //
-        // This is needed for hydration subsequent render to fix node refs.
+        // This is needed on subsequent renders to fix node refs.
         if let Some(r) = self.render_priority.pop_topmost() {
             to_run.push(r);
             return;

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 use indexmap::IndexMap;
-use rust_wasm_binding::{Element, ElementOps, NodeOps};
+use lynx_sys::{Element, ElementOps};
 use yew::AttrValue;
 
 use super::Apply;
@@ -10,11 +10,10 @@ use crate::dom_bundle::BSubtree;
 use crate::virtual_dom::vtag::{InputFields, InputMarker, TextareaFields, TextareaMarker, Value};
 use crate::virtual_dom::{AttributeOrProperty, Attributes};
 
-// In the browser fork Value<T> stored its "current DOM value" by calling the
-// element's `.value()` getter. On Paws there is no property accessor — DOM
-// properties and attributes collapse into a single `set_attribute` call
-// (documented as a placeholder in the fork's Phase 2 plan) — so the `Value`
-// apply paths simply forward the new string through the attribute path.
+// In the browser build Value<T> stored its "current DOM value" by calling the
+// element's `.value()` getter. The WAMR host binding currently has no property
+// accessor, so the `Value` apply paths forward the new string through the
+// attribute path.
 
 impl<T> Apply for Value<T> {
     type Bundle = Self;
@@ -40,19 +39,19 @@ impl<T> Apply for Value<T> {
     }
 }
 
-/// Placeholder for input/textarea `.value = …`. Paws has no `set_property`
-/// host function yet, so we route through `set_attribute("value", …)`. This
-/// loses the DOM-property/attribute distinction but keeps the API shape.
+/// Placeholder for input/textarea `.value = ...`. There is no `set_property`
+/// host function yet, so we route through `set_attribute("value", ...)`.
+/// This loses the DOM-property/attribute distinction but keeps the API shape.
 fn set_value_placeholder(el: &Element, value: &str) {
     if let Err(err) = el.set_attribute("value", value) {
-        tracing::warn!(?err, el = el.id(), "failed to set `value` attribute");
+        tracing::warn!(?err, el = ?el.id(), "failed to set `value` attribute");
     }
 }
 
 fn set_checked_placeholder(el: &Element, checked: bool) {
     let value = if checked { "true" } else { "false" };
     if let Err(err) = el.set_attribute("checked", value) {
-        tracing::warn!(?err, el = el.id(), "failed to set `checked` attribute");
+        tracing::warn!(?err, el = ?el.id(), "failed to set `checked` attribute");
     }
 }
 
@@ -85,7 +84,7 @@ impl Apply for TextareaFields {
     fn apply(self, root: &BSubtree, el: &Element) -> Self::Bundle {
         if let Some(def) = self.defaultvalue {
             if let Err(err) = el.set_attribute("defaultValue", def.as_str()) {
-                tracing::warn!(?err, el = el.id(), "failed to set `defaultValue` attribute");
+                tracing::warn!(?err, el = ?el.id(), "failed to set `defaultValue` attribute");
             }
         }
         self.value.apply(root, el)
@@ -172,13 +171,13 @@ impl Attributes {
             AttributeOrProperty::Static(v) => v,
         };
         if let Err(err) = el.set_attribute(key, string_value) {
-            tracing::warn!(?err, el = el.id(), key, "failed to set attribute");
+            tracing::warn!(?err, el = ?el.id(), key, "failed to set attribute");
         }
     }
 
     fn remove(el: &Element, key: &str, _old_value: &AttributeOrProperty) {
         if let Err(err) = el.remove_attribute(key) {
-            tracing::warn!(?err, el = el.id(), key, "failed to remove attribute");
+            tracing::warn!(?err, el = ?el.id(), key, "failed to remove attribute");
         }
     }
 }

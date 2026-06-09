@@ -3,12 +3,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use rust_wasm_binding::{Element, NodeOps};
-
-/// Sentinel node id used by the trap check in debug builds. Real Paws node
-/// ids are always `>= 0`, so `i32::MIN` is guaranteed not to collide.
-#[cfg(debug_assertions)]
-const TRAP_SENTINEL: i32 = i32::MIN;
+use lynx_sys::{Element, ExternRef};
 
 /// A position in the list of children of an implicit parent element.
 ///
@@ -21,8 +16,8 @@ pub(crate) struct DomSlot {
 
 #[derive(Clone)]
 enum DomSlotVariant {
-    /// A next-sibling Paws node id, or `None` for "append at end".
-    Node(Option<i32>),
+    /// A next-sibling host node reference, or `None` for "append at end".
+    Node(Option<ExternRef>),
     Chained(DynamicDomSlot),
 }
 
@@ -38,8 +33,7 @@ impl std::fmt::Debug for DomSlot {
         self.with_next_sibling(|n| {
             let formatted = match n {
                 None => None,
-                Some(id) if is_trap(id) => Some("<not yet initialized />".to_string()),
-                Some(id) => Some(format!("node({id})")),
+                Some(id) => Some(format!("node({id:?})")),
             };
             write!(f, "DomSlot {{ next_sibling: {formatted:?} }}")
         })
@@ -52,22 +46,9 @@ impl std::fmt::Debug for DynamicDomSlot {
     }
 }
 
-#[inline]
-fn is_trap(id: i32) -> bool {
-    #[cfg(debug_assertions)]
-    {
-        id == TRAP_SENTINEL
-    }
-    #[cfg(not(debug_assertions))]
-    {
-        let _ = id;
-        false
-    }
-}
-
 impl DomSlot {
     /// Denotes the position just before the given node in its parent's list of children.
-    pub fn at(next_sibling: i32) -> Self {
+    pub fn at(next_sibling: ExternRef) -> Self {
         Self::create(Some(next_sibling))
     }
 
@@ -76,27 +57,15 @@ impl DomSlot {
         Self::create(None)
     }
 
-    pub fn create(next_sibling: Option<i32>) -> Self {
+    pub fn create(next_sibling: Option<ExternRef>) -> Self {
         Self {
             variant: DomSlotVariant::Node(next_sibling),
         }
     }
 
-    /// Get the next-sibling Paws node id that comes just after the position, or `None` if this
+    /// Get the next-sibling host node reference that comes just after the position, or `None` if this
     /// denotes the position at the end.
-    fn with_next_sibling_check_trap<R>(&self, f: impl FnOnce(Option<i32>) -> R) -> R {
-        let checkedf = |node: Option<i32>| {
-            let is_trapped = matches!(node, Some(id) if is_trap(id));
-            assert!(
-                !is_trapped,
-                "Should not use a trapped DomSlot. Please report this as an internal bug in yew."
-            );
-            f(node)
-        };
-        self.with_next_sibling(checkedf)
-    }
-
-    fn with_next_sibling<R>(&self, f: impl FnOnce(Option<i32>) -> R) -> R {
+    fn with_next_sibling<R>(&self, f: impl FnOnce(Option<ExternRef>) -> R) -> R {
         match &self.variant {
             DomSlotVariant::Node(n) => f(*n),
             DomSlotVariant::Chained(chain) => chain.with_next_sibling(f),
@@ -105,11 +74,9 @@ impl DomSlot {
 
     /// Insert `node` at the position denoted by this slot. `parent` must be the actual parent
     /// element of the children that this slot is implicitly a part of.
-    pub(super) fn insert(&self, parent: &Element, node: i32) {
-        self.with_next_sibling_check_trap(|next_sibling: Option<i32>| {
-            // Paws' `insert_before` takes `-1` as the "at end" sentinel.
-            let ref_child = next_sibling.unwrap_or(-1);
-            if let Err(err) = rust_wasm_binding::insert_before(parent.id(), node, ref_child) {
+    pub(super) fn insert(&self, parent: &Element, node: ExternRef) {
+        self.with_next_sibling(|next_sibling: Option<ExternRef>| {
+            if let Err(err) = lynx_sys::insert_before(parent.id(), node, next_sibling) {
                 let msg = if next_sibling.is_some() {
                     "failed to insert node before next sibling"
                 } else {
@@ -117,9 +84,9 @@ impl DomSlot {
                 };
                 tracing::error!(
                     ?err,
-                    parent = parent.id(),
+                    parent = ?parent.id(),
                     next_sibling = ?next_sibling,
-                    node,
+                    node = ?node,
                     "{msg}"
                 );
                 panic!("{}", msg)
@@ -152,7 +119,7 @@ impl DynamicDomSlot {
         }
     }
 
-    fn with_next_sibling<R>(&self, f: impl FnOnce(Option<i32>) -> R) -> R {
+    fn with_next_sibling<R>(&self, f: impl FnOnce(Option<ExternRef>) -> R) -> R {
         // we use an iterative approach to traverse a possible long chain for references
         // see for example issue #3043 why a recursive call is impossible for large lists in vdom
 

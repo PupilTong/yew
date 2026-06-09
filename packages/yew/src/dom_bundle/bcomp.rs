@@ -5,7 +5,7 @@ use std::borrow::Borrow;
 use std::fmt;
 use std::rc::Rc;
 
-use rust_wasm_binding::Element;
+use lynx_sys::Element;
 
 use super::{BNode, BSubtree, DomSlot, DynamicDomSlot, Reconcilable, ReconcileTarget};
 use crate::html::{AnyScope, Scoped};

@@ -16,21 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # for wasm-bindgen-cli, always use stable rust
-      - name: Setup toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: stable
-
-      - name: Install wasm-bindgen-cli
-        shell: bash
-        run: ./ci/install-wasm-bindgen-cli.sh
-
       - name: Setup toolchain
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly
-          targets: wasm32-unknown-unknown
+          targets: wasm32-wasip1
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -43,4 +33,4 @@ jobs:
       - uses: nanasess/setup-chromedriver@v2
 
       - name: Run website code snippet tests
-        run: cargo test -p website-test --target wasm32-unknown-unknown
+        run: cargo test -p website-test --target wasm32-wasip1

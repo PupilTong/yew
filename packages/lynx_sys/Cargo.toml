@@ -1,0 +1,10 @@
+[package]
+name = "lynx_sys"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Rust wrappers for Lynx WAMR host bindings"
+rust-version = "1.84.0"
+
+[features]
+default = []

@@ -1,0 +1,39 @@
+[workspace]
+members = [
+    "packages/lynx_sys",
+    "packages/yew",
+    "packages/yew-macro",
+]
+exclude = ["examples/.cargo"]
+default-members = [
+    "packages/yew",
+]
+resolver = "3"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+opt-level = "z"
+
+[profile.bench]
+lto = true
+codegen-units = 1
+opt-level = 3
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    "cfg(documenting)",
+    "cfg(verbose_tests)",
+    "cfg(yew_lints)",
+    "cfg(nightly_yew)",
+]}
+[workspace.dependencies]
+implicit-clone = { version = "0.6.0" }
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2" }
+trybuild = "1"
+futures = { version = "0.3", default-features = false }
+rustversion = "1"
+thiserror = "2.0"
