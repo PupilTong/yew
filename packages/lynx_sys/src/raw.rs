@@ -34,46 +34,76 @@ fn node(raw: i32) -> Option<i32> {
     (raw >= 0).then_some(raw)
 }
 
-/// Dynamic host value used for copied ABI values and host references.
-#[derive(Debug, Clone, Copy)]
-pub enum HostValue<'a> {
-    /// Undefined.
-    Undefined,
-    /// Null.
-    Null,
-    /// Boolean.
-    Bool(bool),
-    /// Number.
-    Number(f64),
-    /// UTF-8 string.
-    String(&'a str),
-    /// Host-owned reference (arena id).
-    ExternRef(i32),
+/// A value that crosses the host ABI as a dynamic `any` argument.
+///
+/// Implemented for native Rust types so call sites pass them directly instead
+/// of a tagged enum:
+/// - `&str` → string
+/// - `bool` → boolean
+/// - `f64` → number
+/// - `i32` → host reference (arena id)
+/// - `Option<T>` → the inner value, or `null` when `None`
+/// - `()` → undefined
+pub trait IntoHostValue {
+    /// Flattens to the ABI carrier `(kind, number, string_ptr, string_len, reference)`.
+    #[doc(hidden)]
+    fn into_host_value(self) -> (i32, f64, i32, i32, i32);
 }
 
-impl HostValue<'_> {
+impl IntoHostValue for &str {
     #[inline(always)]
-    fn into_raw_parts(self) -> (i32, f64, i32, i32, i32) {
+    fn into_host_value(self) -> (i32, f64, i32, i32, i32) {
+        (
+            HostValueKind::String as i32,
+            0.0,
+            self.as_ptr() as i32,
+            self.len() as i32,
+            NULL_NODE,
+        )
+    }
+}
+
+impl IntoHostValue for bool {
+    #[inline(always)]
+    fn into_host_value(self) -> (i32, f64, i32, i32, i32) {
+        (
+            HostValueKind::Bool as i32,
+            if self { 1.0 } else { 0.0 },
+            0,
+            0,
+            NULL_NODE,
+        )
+    }
+}
+
+impl IntoHostValue for f64 {
+    #[inline(always)]
+    fn into_host_value(self) -> (i32, f64, i32, i32, i32) {
+        (HostValueKind::Number as i32, self, 0, 0, NULL_NODE)
+    }
+}
+
+impl IntoHostValue for i32 {
+    #[inline(always)]
+    fn into_host_value(self) -> (i32, f64, i32, i32, i32) {
+        (HostValueKind::ExternRef as i32, 0.0, 0, 0, self)
+    }
+}
+
+impl<T: IntoHostValue> IntoHostValue for Option<T> {
+    #[inline(always)]
+    fn into_host_value(self) -> (i32, f64, i32, i32, i32) {
         match self {
-            Self::Undefined => (HostValueKind::Undefined as i32, 0.0, 0, 0, NULL_NODE),
-            Self::Null => (HostValueKind::Null as i32, 0.0, 0, 0, NULL_NODE),
-            Self::Bool(value) => (
-                HostValueKind::Bool as i32,
-                if value { 1.0 } else { 0.0 },
-                0,
-                0,
-                NULL_NODE,
-            ),
-            Self::Number(value) => (HostValueKind::Number as i32, value, 0, 0, NULL_NODE),
-            Self::String(value) => (
-                HostValueKind::String as i32,
-                0.0,
-                value.as_ptr() as i32,
-                value.len() as i32,
-                NULL_NODE,
-            ),
-            Self::ExternRef(value) => (HostValueKind::ExternRef as i32, 0.0, 0, 0, value),
+            Some(value) => value.into_host_value(),
+            None => (HostValueKind::Null as i32, 0.0, 0, 0, NULL_NODE),
         }
+    }
+}
+
+impl IntoHostValue for () {
+    #[inline(always)]
+    fn into_host_value(self) -> (i32, f64, i32, i32, i32) {
+        (HostValueKind::Undefined as i32, 0.0, 0, 0, NULL_NODE)
     }
 }
 
@@ -335,12 +365,6 @@ pub(crate) fn any_borrow_call<R>(
         };
         f(borrowed)
     })
-}
-
-macro_rules! any_args {
-    ($value:expr) => {
-        $value.into_raw_parts()
-    };
 }
 
 mod ffi {
@@ -774,8 +798,8 @@ two_ref_return_ref!(remove_element, remove_element);
 
 /// Calls `__InsertElementBefore`. Returns the inserted child's id.
 #[inline]
-pub fn insert_element_before(parent: i32, child: i32, before: HostValue<'_>) -> i32 {
-    let (kind, number, string_ptr, string_len, ref_value) = any_args!(before);
+pub fn insert_element_before(parent: i32, child: i32, before: impl IntoHostValue) -> i32 {
+    let (kind, number, string_ptr, string_len, ref_value) = before.into_host_value();
     unsafe {
         ffi::insert_element_before(
             parent, child, kind, number, string_ptr, string_len, ref_value,
@@ -839,10 +863,10 @@ pub fn get_tag(element: i32, out_ptr: *mut u8, out_max_len: i32) -> i32 {
 
 /// Calls `__SetAttribute`.
 #[inline]
-pub fn set_attribute(element: i32, key: HostValue<'_>, value: HostValue<'_>) {
-    let (key_kind, key_number, key_string_ptr, key_string_len, key_ref) = any_args!(key);
+pub fn set_attribute(element: i32, key: impl IntoHostValue, value: impl IntoHostValue) {
+    let (key_kind, key_number, key_string_ptr, key_string_len, key_ref) = key.into_host_value();
     let (value_kind, value_number, value_string_ptr, value_string_len, value_ref) =
-        any_args!(value);
+        value.into_host_value();
     unsafe {
         ffi::set_attribute(
             element,
@@ -876,10 +900,10 @@ pub fn set_classes(element: i32, classes: &str) {
 
 /// Calls `__AddInlineStyle`.
 #[inline]
-pub fn add_inline_style(element: i32, key: HostValue<'_>, value: HostValue<'_>) {
-    let (key_kind, key_number, key_string_ptr, key_string_len, key_ref) = any_args!(key);
+pub fn add_inline_style(element: i32, key: impl IntoHostValue, value: impl IntoHostValue) {
+    let (key_kind, key_number, key_string_ptr, key_string_len, key_ref) = key.into_host_value();
     let (value_kind, value_number, value_string_ptr, value_string_len, value_ref) =
-        any_args!(value);
+        value.into_host_value();
     unsafe {
         ffi::add_inline_style(
             element,
@@ -899,8 +923,8 @@ pub fn add_inline_style(element: i32, key: HostValue<'_>, value: HostValue<'_>) 
 
 /// Calls `__SetInlineStyles`.
 #[inline]
-pub fn set_inline_styles(element: i32, value: HostValue<'_>) {
-    let (kind, number, string_ptr, string_len, ref_value) = any_args!(value);
+pub fn set_inline_styles(element: i32, value: impl IntoHostValue) {
+    let (kind, number, string_ptr, string_len, ref_value) = value.into_host_value();
     unsafe { ffi::set_inline_styles(element, kind, number, string_ptr, string_len, ref_value) }
 }
 
@@ -915,9 +939,9 @@ pub fn get_inline_styles(element: i32, out_ptr: *mut u8, out_max_len: i32) -> i3
 }
 
 /// Calls `__SetParsedStyles`.
-pub fn set_parsed_styles(element: i32, styles: &str, config: HostValue<'_>) {
+pub fn set_parsed_styles(element: i32, styles: &str, config: impl IntoHostValue) {
     let (styles_ptr, styles_len) = string_parts(styles);
-    let (kind, number, string_ptr, string_len, ref_value) = any_args!(config);
+    let (kind, number, string_ptr, string_len, ref_value) = config.into_host_value();
     unsafe {
         ffi::set_parsed_styles(
             element, styles_ptr, styles_len, kind, number, string_ptr, string_len, ref_value,
@@ -934,10 +958,10 @@ pub fn get_computed_styles(element: i32) -> HostValueOut {
 
 /// Calls `__AddEvent`.
 #[inline]
-pub fn add_event(element: i32, name: &str, event_type: &str, value: HostValue<'_>) {
+pub fn add_event(element: i32, name: &str, event_type: &str, value: impl IntoHostValue) {
     let (name_ptr, name_len) = string_parts(name);
     let (type_ptr, type_len) = string_parts(event_type);
-    let (kind, number, string_ptr, string_len, ref_value) = any_args!(value);
+    let (kind, number, string_ptr, string_len, ref_value) = value.into_host_value();
     unsafe {
         ffi::add_event(
             element, name_ptr, name_len, type_ptr, type_len, kind, number, string_ptr, string_len,
@@ -948,8 +972,8 @@ pub fn add_event(element: i32, name: &str, event_type: &str, value: HostValue<'_
 
 /// Calls `__SetEvents`.
 #[inline]
-pub fn set_events(element: i32, value: HostValue<'_>) {
-    let (kind, number, string_ptr, string_len, ref_value) = any_args!(value);
+pub fn set_events(element: i32, value: impl IntoHostValue) {
+    let (kind, number, string_ptr, string_len, ref_value) = value.into_host_value();
     unsafe { ffi::set_events(element, kind, number, string_ptr, string_len, ref_value) }
 }
 
@@ -962,8 +986,8 @@ pub fn get_event(element: i32, name: &str, event_type: &str) -> Option<i32> {
 
 /// Calls `__SetID`.
 #[inline]
-pub fn set_id(element: i32, value: HostValue<'_>) {
-    let (kind, number, string_ptr, string_len, ref_value) = any_args!(value);
+pub fn set_id(element: i32, value: impl IntoHostValue) {
+    let (kind, number, string_ptr, string_len, ref_value) = value.into_host_value();
     unsafe { ffi::set_id(element, kind, number, string_ptr, string_len, ref_value) }
 }
 
@@ -979,9 +1003,9 @@ pub fn get_id(element: i32, out_ptr: *mut u8, out_max_len: i32) -> i32 {
 
 /// Calls `__AddDataset`.
 #[inline]
-pub fn add_dataset(element: i32, key: &str, value: HostValue<'_>) {
+pub fn add_dataset(element: i32, key: &str, value: impl IntoHostValue) {
     let (key_ptr, key_len) = string_parts(key);
-    let (kind, number, string_ptr, string_len, ref_value) = any_args!(value);
+    let (kind, number, string_ptr, string_len, ref_value) = value.into_host_value();
     unsafe {
         ffi::add_dataset(
             element, key_ptr, key_len, kind, number, string_ptr, string_len, ref_value,
@@ -991,16 +1015,17 @@ pub fn add_dataset(element: i32, key: &str, value: HostValue<'_>) {
 
 /// Calls `__SetDataset`.
 #[inline]
-pub fn set_dataset(element: i32, value: HostValue<'_>) {
-    let (kind, number, string_ptr, string_len, ref_value) = any_args!(value);
+pub fn set_dataset(element: i32, value: impl IntoHostValue) {
+    let (kind, number, string_ptr, string_len, ref_value) = value.into_host_value();
     unsafe { ffi::set_dataset(element, kind, number, string_ptr, string_len, ref_value) }
 }
 
 /// Calls `__FlushElementTree`.
-pub fn flush_element_tree(root: HostValue<'_>, options: HostValue<'_>) {
-    let (root_kind, root_number, root_string_ptr, root_string_len, root_ref) = any_args!(root);
+pub fn flush_element_tree(root: impl IntoHostValue, options: impl IntoHostValue) {
+    let (root_kind, root_number, root_string_ptr, root_string_len, root_ref) =
+        root.into_host_value();
     let (options_kind, options_number, options_string_ptr, options_string_len, options_ref) =
-        any_args!(options);
+        options.into_host_value();
     unsafe {
         ffi::flush_element_tree(
             root_kind,
@@ -1018,10 +1043,11 @@ pub fn flush_element_tree(root: HostValue<'_>, options: HostValue<'_>) {
 }
 
 /// Calls `_ReportError`.
-pub fn report_error(error: HostValue<'_>, info: HostValue<'_>) {
+pub fn report_error(error: impl IntoHostValue, info: impl IntoHostValue) {
     let (error_kind, error_number, error_string_ptr, error_string_len, error_ref) =
-        any_args!(error);
-    let (info_kind, info_number, info_string_ptr, info_string_len, info_ref) = any_args!(info);
+        error.into_host_value();
+    let (info_kind, info_number, info_string_ptr, info_string_len, info_ref) =
+        info.into_host_value();
     unsafe {
         ffi::report_error(
             error_kind,
@@ -1047,9 +1073,15 @@ pub fn get_data_by_key(element: i32, key: &str) -> HostValueOut {
 }
 
 /// Calls `__ReplaceElements`.
-pub fn replace_elements(parent: i32, new_elements: HostValue<'_>, old_elements: HostValue<'_>) {
-    let (new_kind, new_number, new_string_ptr, new_string_len, new_ref) = any_args!(new_elements);
-    let (old_kind, old_number, old_string_ptr, old_string_len, old_ref) = any_args!(old_elements);
+pub fn replace_elements(
+    parent: i32,
+    new_elements: impl IntoHostValue,
+    old_elements: impl IntoHostValue,
+) {
+    let (new_kind, new_number, new_string_ptr, new_string_len, new_ref) =
+        new_elements.into_host_value();
+    let (old_kind, old_number, old_string_ptr, old_string_len, old_ref) =
+        old_elements.into_host_value();
     unsafe {
         ffi::replace_elements(
             parent,
@@ -1068,9 +1100,9 @@ pub fn replace_elements(parent: i32, new_elements: HostValue<'_>, old_elements: 
 }
 
 /// Calls `__QuerySelector`. `None` when no element matches.
-pub fn query_selector(element: i32, selector: &str, options: HostValue<'_>) -> Option<i32> {
+pub fn query_selector(element: i32, selector: &str, options: impl IntoHostValue) -> Option<i32> {
     let (selector_ptr, selector_len) = string_parts(selector);
-    let (kind, number, string_ptr, string_len, ref_value) = any_args!(options);
+    let (kind, number, string_ptr, string_len, ref_value) = options.into_host_value();
     node(unsafe {
         ffi::query_selector(
             element,
@@ -1086,9 +1118,13 @@ pub fn query_selector(element: i32, selector: &str, options: HostValue<'_>) -> O
 }
 
 /// Calls `__QuerySelectorAll`. `None` when the host returns no result list.
-pub fn query_selector_all(element: i32, selector: &str, options: HostValue<'_>) -> Option<i32> {
+pub fn query_selector_all(
+    element: i32,
+    selector: &str,
+    options: impl IntoHostValue,
+) -> Option<i32> {
     let (selector_ptr, selector_len) = string_parts(selector);
-    let (kind, number, string_ptr, string_len, ref_value) = any_args!(options);
+    let (kind, number, string_ptr, string_len, ref_value) = options.into_host_value();
     node(unsafe {
         ffi::query_selector_all(
             element,
@@ -1104,9 +1140,9 @@ pub fn query_selector_all(element: i32, selector: &str, options: HostValue<'_>) 
 }
 
 /// Calls `__AddConfig`.
-pub fn add_config(element: i32, key: &str, value: HostValue<'_>) {
+pub fn add_config(element: i32, key: &str, value: impl IntoHostValue) {
     let (key_ptr, key_len) = string_parts(key);
-    let (kind, number, string_ptr, string_len, ref_value) = any_args!(value);
+    let (kind, number, string_ptr, string_len, ref_value) = value.into_host_value();
     unsafe {
         ffi::add_config(
             element, key_ptr, key_len, kind, number, string_ptr, string_len, ref_value,
@@ -1115,8 +1151,8 @@ pub fn add_config(element: i32, key: &str, value: HostValue<'_>) {
 }
 
 /// Calls `__SetConfig`.
-pub fn set_config(element: i32, value: HostValue<'_>) {
-    let (kind, number, string_ptr, string_len, ref_value) = any_args!(value);
+pub fn set_config(element: i32, value: impl IntoHostValue) {
+    let (kind, number, string_ptr, string_len, ref_value) = value.into_host_value();
     unsafe { ffi::set_config(element, kind, number, string_ptr, string_len, ref_value) }
 }
 
@@ -1254,6 +1290,38 @@ mod tests {
         assert_eq!(node(7), Some(7));
         assert_eq!(node(-1), None);
         assert_eq!(node(NULL_NODE), None);
+    }
+
+    #[test]
+    fn into_host_value_native_types() {
+        let kind = |v: (i32, f64, i32, i32, i32)| v.0;
+        // &str -> string (ptr/len populated).
+        let s = "hi".into_host_value();
+        assert_eq!(kind(s), HostValueKind::String as i32);
+        assert_eq!(s.3, 2); // string_len
+                            // bool -> boolean.
+        assert_eq!(
+            true.into_host_value(),
+            (HostValueKind::Bool as i32, 1.0, 0, 0, NULL_NODE)
+        );
+        // f64 -> number.
+        assert_eq!(
+            1.5_f64.into_host_value(),
+            (HostValueKind::Number as i32, 1.5, 0, 0, NULL_NODE)
+        );
+        // i32 -> host reference (arena id in the reference slot).
+        assert_eq!(
+            7_i32.into_host_value(),
+            (HostValueKind::ExternRef as i32, 0.0, 0, 0, 7)
+        );
+        // Option: Some delegates, None is null.
+        assert_eq!(Some(7_i32).into_host_value(), 7_i32.into_host_value());
+        assert_eq!(
+            kind(None::<i32>.into_host_value()),
+            HostValueKind::Null as i32
+        );
+        // () -> undefined.
+        assert_eq!(kind(().into_host_value()), HostValueKind::Undefined as i32);
     }
 
     #[test]

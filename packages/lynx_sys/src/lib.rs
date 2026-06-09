@@ -11,7 +11,7 @@ use std::fmt;
 
 pub mod raw;
 
-pub use raw::{HostValue, HostValueKind, HostValueOut, NULL_NODE};
+pub use raw::{HostValueKind, HostValueOut, IntoHostValue, NULL_NODE};
 
 /// Error returned by binding convenience wrappers.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -263,13 +263,13 @@ pub trait ElementOps {
 impl ElementOps for Element {
     #[inline]
     fn set_attribute(&self, key: &str, value: &str) -> Result<()> {
-        raw::set_attribute(self.raw, HostValue::String(key), HostValue::String(value));
+        raw::set_attribute(self.raw, key, value);
         Ok(())
     }
 
     #[inline]
     fn remove_attribute(&self, key: &str) -> Result<()> {
-        raw::set_attribute(self.raw, HostValue::String(key), HostValue::Null);
+        raw::set_attribute(self.raw, key, None::<i32>);
         Ok(())
     }
 }
@@ -294,9 +294,6 @@ pub fn drop_element(element: i32) {
 /// Inserts a child before `ref_child`, or appends it when `ref_child` is `None`.
 #[inline]
 pub fn insert_before(parent: i32, node: i32, ref_child: Option<i32>) -> Result<i32> {
-    let ref_child = ref_child
-        .map(HostValue::ExternRef)
-        .unwrap_or(HostValue::Null);
     Ok(raw::insert_element_before(parent, node, ref_child))
 }
 
@@ -364,7 +361,7 @@ pub fn get_namespace_uri_with<R>(node: i32, f: impl FnOnce(Result<Option<&str>>)
 
 /// Flushes pending element tree changes.
 pub fn commit() -> Result<()> {
-    raw::flush_element_tree(HostValue::Null, HostValue::Null);
+    raw::flush_element_tree(None::<i32>, None::<i32>);
     Ok(())
 }
 
