@@ -3,7 +3,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lynx_sys::{Element, ExternRef};
+use lynx_sys::Element;
 
 /// A position in the list of children of an implicit parent element.
 ///
@@ -17,7 +17,7 @@ pub(crate) struct DomSlot {
 #[derive(Clone)]
 enum DomSlotVariant {
     /// A next-sibling host node reference, or `None` for "append at end".
-    Node(Option<ExternRef>),
+    Node(Option<i32>),
     Chained(DynamicDomSlot),
 }
 
@@ -48,7 +48,7 @@ impl std::fmt::Debug for DynamicDomSlot {
 
 impl DomSlot {
     /// Denotes the position just before the given node in its parent's list of children.
-    pub fn at(next_sibling: ExternRef) -> Self {
+    pub fn at(next_sibling: i32) -> Self {
         Self::create(Some(next_sibling))
     }
 
@@ -57,15 +57,15 @@ impl DomSlot {
         Self::create(None)
     }
 
-    pub fn create(next_sibling: Option<ExternRef>) -> Self {
+    pub fn create(next_sibling: Option<i32>) -> Self {
         Self {
             variant: DomSlotVariant::Node(next_sibling),
         }
     }
 
-    /// Get the next-sibling host node reference that comes just after the position, or `None` if this
-    /// denotes the position at the end.
-    fn with_next_sibling<R>(&self, f: impl FnOnce(Option<ExternRef>) -> R) -> R {
+    /// Get the next-sibling host node reference that comes just after the position, or `None` if
+    /// this denotes the position at the end.
+    fn with_next_sibling<R>(&self, f: impl FnOnce(Option<i32>) -> R) -> R {
         match &self.variant {
             DomSlotVariant::Node(n) => f(*n),
             DomSlotVariant::Chained(chain) => chain.with_next_sibling(f),
@@ -74,8 +74,8 @@ impl DomSlot {
 
     /// Insert `node` at the position denoted by this slot. `parent` must be the actual parent
     /// element of the children that this slot is implicitly a part of.
-    pub(super) fn insert(&self, parent: &Element, node: ExternRef) {
-        self.with_next_sibling(|next_sibling: Option<ExternRef>| {
+    pub(super) fn insert(&self, parent: &Element, node: i32) {
+        self.with_next_sibling(|next_sibling: Option<i32>| {
             if let Err(err) = lynx_sys::insert_before(parent.id(), node, next_sibling) {
                 let msg = if next_sibling.is_some() {
                     "failed to insert node before next sibling"
@@ -119,7 +119,7 @@ impl DynamicDomSlot {
         }
     }
 
-    fn with_next_sibling<R>(&self, f: impl FnOnce(Option<ExternRef>) -> R) -> R {
+    fn with_next_sibling<R>(&self, f: impl FnOnce(Option<i32>) -> R) -> R {
         // we use an iterative approach to traverse a possible long chain for references
         // see for example issue #3043 why a recursive call is impossible for large lists in vdom
 

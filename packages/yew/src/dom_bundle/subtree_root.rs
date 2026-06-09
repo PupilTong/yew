@@ -10,11 +10,10 @@
 //! What remains here is the listener *registration* scaffolding that
 //! reconciliation still maintains:
 //!
-//! * `SubtreeData` / `BSubtree` / `ParentingInformation` — the portal mount /
-//!   parenting data model, used while mounting controlled subtrees.
-//! * `Registry` (in `btag/listeners.rs`) — tracks which listeners are attached
-//!   where, ready to be wired to host callbacks once the runtime boundary
-//!   provides a real callback `ExternRef`.
+//! * `SubtreeData` / `BSubtree` / `ParentingInformation` — the portal mount / parenting data model,
+//!   used while mounting controlled subtrees.
+//! * `Registry` (in `btag/listeners.rs`) — tracks which listeners are attached where, ready to be
+//!   wired to host callbacks once the runtime boundary provides a real callback handle.
 //! * `SUBTREE_IDS` — element branding, retained as part of that scaffolding.
 
 use std::cell::RefCell;
@@ -23,7 +22,7 @@ use std::hash::{Hash, Hasher};
 use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use lynx_sys::{Element, ExternRef};
+use lynx_sys::Element;
 
 use super::Registry;
 use crate::virtual_dom::{Listener, ListenerKind};
@@ -31,16 +30,16 @@ use crate::virtual_dom::{Listener, ListenerKind};
 thread_local! {
     /// Replaces the upstream `__yew_subtree_id` duck-typed property. Keyed directly
     /// on the host reference.
-    static SUBTREE_IDS: RefCell<HashMap<ExternRef, TreeId>> = RefCell::new(HashMap::new());
+    static SUBTREE_IDS: RefCell<HashMap<i32, TreeId>> = RefCell::new(HashMap::new());
 }
 
-fn set_subtree_id(el: ExternRef, tree_id: TreeId) {
+fn set_subtree_id(el: i32, tree_id: TreeId) {
     SUBTREE_IDS.with(|m| {
         m.borrow_mut().insert(el, tree_id);
     });
 }
 
-fn forget_subtree_id(el: ExternRef) {
+fn forget_subtree_id(el: i32) {
     SUBTREE_IDS.with(|m| {
         m.borrow_mut().remove(&el);
     });
@@ -87,7 +86,7 @@ impl From<&dyn Listener> for EventDescriptor {
 /// Manages host-side event listener registrations for a single subtree.
 ///
 /// Each subtree tracks at most one host-side listener per event kind
-/// (delegation model). The actual callback `ExternRef` must come from the
+/// (delegation model). The actual callback handle must come from the
 /// compiler/runtime boundary; this module does not synthesize guest refs.
 #[derive(Debug)]
 struct HostHandlers {
@@ -114,7 +113,7 @@ impl HostHandlers {
                 host = ?self.host.id(),
                 %event_type,
                 passive = desc.passive,
-                "event listener needs a callback externref from the wasm runtime"
+                "event listener needs a callback handle from the wasm runtime"
             );
         }
     }
@@ -257,14 +256,14 @@ impl BSubtree {
         f(&mut self.0.event_registry().borrow_mut())
     }
 
-    pub fn brand_element(&self, el: ExternRef) {
+    pub fn brand_element(&self, el: i32) {
         set_subtree_id(el, self.0.subtree_id);
     }
 
     /// Remove subtree branding from a node that is being detached. This prevents
     /// stale entries in `SUBTREE_IDS` from misrouting work after a host
     /// reference becomes stale.
-    pub fn unbrand_element(&self, el: ExternRef) {
+    pub fn unbrand_element(&self, el: i32) {
         forget_subtree_id(el);
     }
 }

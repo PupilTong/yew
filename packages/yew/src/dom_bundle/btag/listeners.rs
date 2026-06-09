@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::ops::Deref;
 use std::rc::Rc;
 
-use lynx_sys::{Element, ExternRef};
+use lynx_sys::Element;
 
 use super::Apply;
 use crate::dom_bundle::{test_log, BSubtree, EventDescriptor};
@@ -14,16 +14,16 @@ thread_local! {
     /// replaced with listener metadata keyed directly on the host reference.
     /// Entries are cleaned up explicitly from [`ListenerRegistration`] detach
     /// paths; there is no GC backstop.
-    static LISTENER_IDS: RefCell<HashMap<ExternRef, u32>> = RefCell::new(HashMap::new());
+    static LISTENER_IDS: RefCell<HashMap<i32, u32>> = RefCell::new(HashMap::new());
 }
 
-fn store_listener_id(el: ExternRef, id: u32) {
+fn store_listener_id(el: i32, id: u32) {
     LISTENER_IDS.with(|map| {
         map.borrow_mut().insert(el, id);
     });
 }
 
-fn forget_listener_id(el: ExternRef) {
+fn forget_listener_id(el: i32) {
     LISTENER_IDS.with(|map| {
         map.borrow_mut().remove(&el);
     });
@@ -36,7 +36,7 @@ pub(super) enum ListenerRegistration {
     NoReg,
     /// Added to global registry by ID, along with the element reference used
     /// for cleanup from [`LISTENER_IDS`].
-    Registered { id: u32, el: ExternRef },
+    Registered { id: u32, el: i32 },
 }
 
 impl Apply for Listeners {

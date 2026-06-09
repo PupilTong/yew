@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use lynx_sys::{Element, ExternRef};
+use lynx_sys::Element;
 
 use super::{test_log, BNode, BSubtree, DomSlot};
 use crate::dom_bundle::{Reconcilable, ReconcileTarget};
@@ -19,7 +19,7 @@ pub struct BPortal {
     /// alive while yew renders into it.
     host: Rc<Element>,
     /// The next sibling after the inserted content.
-    inner_sibling: Option<ExternRef>,
+    inner_sibling: Option<i32>,
     /// The inserted node
     node: Box<BNode>,
 }
