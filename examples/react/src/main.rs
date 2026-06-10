@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::rc::Rc;
 use std::{fmt::Write as _, mem};
 
@@ -9,6 +10,9 @@ const LYNX_LOGO: &str = inline_image!("assets/lynx-logo.png");
 const YEW_LOGO: &str = inline_image!("assets/yew-logo.png");
 
 const POP_Y: f64 = -28.0;
+const FLAP_SETTLE_DELAY_MS: i64 = 48;
+const FLAP_FRAME_MS: i64 = 16;
+const FLAP_FRAMES: [f64; 6] = [-22.0, -15.0, -9.0, -4.0, -1.0, 0.0];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Logo {
@@ -52,6 +56,39 @@ fn logo_style(y: f64) -> String {
     style
 }
 
+fn schedule_flap(logo_y: UseStateHandle<f64>) {
+    let frame = Rc::new(Cell::new(0usize));
+    let interval_id = Rc::new(Cell::new(0));
+
+    lynx_sys::set_timeout(
+        {
+            let frame = frame.clone();
+            let interval_id = interval_id.clone();
+            move || {
+                let id = lynx_sys::set_interval(
+                    {
+                        let frame = frame.clone();
+                        let interval_id = interval_id.clone();
+                        move || {
+                            let index = frame.get();
+                            if let Some(y) = FLAP_FRAMES.get(index).copied() {
+                                logo_y.set(y);
+                                frame.set(index + 1);
+                            } else {
+                                logo_y.set(0.0);
+                                lynx_sys::clear_interval(interval_id.get());
+                            }
+                        }
+                    },
+                    FLAP_FRAME_MS,
+                );
+                interval_id.set(id);
+            }
+        },
+        FLAP_SETTLE_DELAY_MS,
+    );
+}
+
 #[function_component(App)]
 fn app() -> Html {
     let logo = use_state(Logo::default);
@@ -62,14 +99,15 @@ fn app() -> Html {
         let logo_y = logo_y.clone();
         Callback::from(move |_| {
             logo.set((*logo).toggled());
-            logo_y.set(if *logo_y < 0.0 { 0.0 } else { POP_Y });
+            logo_y.set(POP_Y);
+            schedule_flap(logo_y.clone());
         })
     };
     let logo_value = *logo;
     let logo_style = logo_style(*logo_y);
 
     html! {
-        <view style={style::PAGE} onclick={play}>
+        <view style={style::PAGE} ontap={play}>
             <view style={style::BACKGROUND} />
             <view style={style::APP}>
                 <view style={style::BANNER}>

@@ -127,6 +127,7 @@ gen_listener_kinds! {
     onstalled
     onsubmit
     onsuspend
+    ontap
     ontimeupdate
     ontoggle
     onvolumechange

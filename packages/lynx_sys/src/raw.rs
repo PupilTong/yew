@@ -236,6 +236,7 @@ mod ffi {
         #[link_name = "binding__DropElement"]
         pub fn drop_element(element_id: i32);
         #[link_name = "binding__DropEvent"]
+        #[cfg_attr(all(test, not(target_arch = "wasm32")), allow(dead_code))]
         pub fn drop_event(event_id: i32);
         #[link_name = "__AppendElement"]
         pub fn append_element(parent: i32, child: i32) -> i32;
@@ -362,6 +363,10 @@ mod ffi {
         pub fn stop_propagation(event: i32);
         #[link_name = "__StopImmediatePropagation"]
         pub fn stop_immediate_propagation(event: i32);
+        #[link_name = "__GetEventType"]
+        pub fn get_event_type(event: i32, out_ptr: *mut u8, out_max_len: i32) -> i32;
+        #[link_name = "__GetEventCurrentTargetUniqueID"]
+        pub fn get_event_current_target_unique_id(event: i32) -> i64;
         #[link_name = "setTimeout"]
         pub fn set_timeout(callback: i32, delay_ms: i64) -> i64;
         #[link_name = "clearTimeout"]
@@ -423,9 +428,14 @@ pub fn drop_element(element: i32) {
 }
 
 #[inline]
+#[cfg(not(all(test, not(target_arch = "wasm32"))))]
 pub fn drop_event(event: i32) {
     unsafe { ffi::drop_event(event) }
 }
+
+#[inline]
+#[cfg(all(test, not(target_arch = "wasm32")))]
+pub fn drop_event(_event: i32) {}
 
 macro_rules! two_ref_return_ref {
     ($name:ident, $ffi_name:ident) => {
@@ -628,6 +638,18 @@ pub fn stop_propagation(event: i32) {
 
 pub fn stop_immediate_propagation(event: i32) {
     unsafe { ffi::stop_immediate_propagation(event) }
+}
+
+#[inline]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub fn get_event_type(event: i32, out_ptr: *mut u8, out_max_len: i32) -> i32 {
+    unsafe { ffi::get_event_type(event, out_ptr, out_max_len) }
+}
+
+#[inline]
+pub fn get_event_current_target_unique_id(event: i32) -> Option<i64> {
+    let unique_id = unsafe { ffi::get_event_current_target_unique_id(event) };
+    (unique_id >= 0).then_some(unique_id)
 }
 
 pub fn set_timeout(callback: i32, delay_ms: i64) -> i64 {
