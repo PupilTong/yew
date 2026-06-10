@@ -11,7 +11,10 @@ use std::fmt;
 
 pub mod raw;
 
-pub use raw::{HostValueKind, HostValueOut, IntoHostValue, NULL_NODE};
+pub use raw::{
+    EVENT_FLAG_BUBBLES, EVENT_FLAG_CANCELABLE, EVENT_FLAG_CAPTURE, EVENT_FLAG_COMPOSED,
+    LISTENER_FLAG_CAPTURE, LISTENER_FLAG_ONCE, LISTENER_FLAG_PASSIVE, NULL_NODE,
+};
 
 /// Error returned by binding convenience wrappers.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -227,6 +230,71 @@ impl fmt::Debug for Text {
     }
 }
 
+/// Host event wrapper.
+pub struct Event {
+    raw: i32,
+}
+
+impl Event {
+    /// Creates a host event in the typed event arena.
+    pub fn new(event_type: i32, name: &str, flags: i32) -> Result<Self> {
+        let raw =
+            raw::create_event(event_type, name, flags).ok_or(Error::NullNode("__CreateEvent"))?;
+        Ok(Self { raw })
+    }
+
+    /// Wraps a host event arena id.
+    #[inline]
+    pub fn from_raw(raw: i32) -> Option<Self> {
+        if raw < 0 {
+            None
+        } else {
+            Some(Self { raw })
+        }
+    }
+
+    /// Returns the host event arena id.
+    #[inline(always)]
+    pub fn raw(&self) -> i32 {
+        self.raw
+    }
+
+    /// Consumes the wrapper without dropping the host event.
+    #[inline(always)]
+    pub fn into_raw(self) -> i32 {
+        let raw = self.raw;
+        std::mem::forget(self);
+        raw
+    }
+
+    /// Dispatches this event on an element.
+    pub fn dispatch_on(&self, element: i32) -> bool {
+        raw::dispatch_event(element, self.raw)
+    }
+
+    /// Stops further propagation after the current target phase.
+    pub fn stop_propagation(&self) {
+        raw::stop_propagation(self.raw);
+    }
+
+    /// Stops subsequent listeners on the same target and further propagation.
+    pub fn stop_immediate_propagation(&self) {
+        raw::stop_immediate_propagation(self.raw);
+    }
+}
+
+impl Drop for Event {
+    fn drop(&mut self) {
+        raw::drop_event(self.raw);
+    }
+}
+
+impl fmt::Debug for Event {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Event").field("raw", &self.raw).finish()
+    }
+}
+
 /// Shared node operations.
 pub trait NodeOps {
     /// Returns the host arena id for this node.
@@ -263,13 +331,13 @@ pub trait ElementOps {
 impl ElementOps for Element {
     #[inline]
     fn set_attribute(&self, key: &str, value: &str) -> Result<()> {
-        raw::set_attribute(self.raw, key, value);
+        raw::set_string_attribute(self.raw, key, value);
         Ok(())
     }
 
     #[inline]
     fn remove_attribute(&self, key: &str) -> Result<()> {
-        raw::set_attribute(self.raw, key, None::<i32>);
+        raw::remove_attribute(self.raw, key);
         Ok(())
     }
 }
@@ -336,13 +404,9 @@ pub fn get_tag_with<R>(node: i32, f: impl FnOnce(Result<Option<&str>>) -> R) -> 
 
 /// Returns the namespace URI recorded on an element, if present.
 pub fn get_namespace_uri(node: i32) -> Result<Option<String>> {
-    match raw::get_attribute_by_name(node, "xmlns") {
-        HostValueOut::String { bytes, .. } => String::from_utf8(bytes)
-            .map(Some)
-            .map_err(|_| Error::InvalidUtf8("__GetAttributeByName")),
-        HostValueOut::Null | HostValueOut::Undefined => Ok(None),
-        _ => Ok(None),
-    }
+    string_return("__GetStringAttributeByName", |ptr, max| {
+        raw::get_string_attribute_by_name(node, "xmlns", ptr, max)
+    })
 }
 
 /// Borrowing variant of [`get_namespace_uri`]: invokes `f` with the recorded
@@ -350,18 +414,16 @@ pub fn get_namespace_uri(node: i32) -> Result<Option<String>> {
 /// The borrow is valid only for the duration of `f`.
 #[inline]
 pub fn get_namespace_uri_with<R>(node: i32, f: impl FnOnce(Result<Option<&str>>) -> R) -> R {
-    raw::get_attribute_by_name_borrow(node, "xmlns", |value| match value {
-        raw::AnyBorrow::Str(bytes) => match std::str::from_utf8(bytes) {
-            Ok(value) => f(Ok(Some(value))),
-            Err(_) => f(Err(Error::InvalidUtf8("__GetAttributeByName"))),
-        },
-        _ => f(Ok(None)),
-    })
+    string_return_with(
+        "__GetStringAttributeByName",
+        |ptr, max| raw::get_string_attribute_by_name(node, "xmlns", ptr, max),
+        f,
+    )
 }
 
 /// Flushes pending element tree changes.
 pub fn commit() -> Result<()> {
-    raw::flush_element_tree(None::<i32>, None::<i32>);
+    raw::flush_element_tree(None);
     Ok(())
 }
 
@@ -396,6 +458,19 @@ impl EventListenerOptions {
         self.once = true;
         self
     }
+
+    fn bits(self) -> i32 {
+        (if self.capture {
+            LISTENER_FLAG_CAPTURE
+        } else {
+            0
+        }) | (if self.once { LISTENER_FLAG_ONCE } else { 0 })
+            | (if self.passive {
+                LISTENER_FLAG_PASSIVE
+            } else {
+                0
+            })
+    }
 }
 
 /// Adds an event listener through the host.
@@ -403,9 +478,9 @@ pub fn add_event_listener(
     element: i32,
     event_type: &str,
     callback: i32,
-    _options: EventListenerOptions,
+    options: EventListenerOptions,
 ) -> Result<()> {
-    raw::add_event_listener(element, event_type, callback, NULL_NODE);
+    raw::add_event_listener(element, event_type, callback, options.bits());
     Ok(())
 }
 
@@ -414,9 +489,10 @@ pub fn remove_event_listener(
     element: i32,
     event_type: &str,
     callback: i32,
-    _capture: bool,
+    capture: bool,
 ) -> Result<()> {
-    raw::remove_event_listener(element, event_type, callback, NULL_NODE);
+    let options = if capture { LISTENER_FLAG_CAPTURE } else { 0 };
+    raw::remove_event_listener(element, event_type, callback, options);
     Ok(())
 }
 
@@ -428,12 +504,6 @@ pub fn event_target() -> Option<i32> {
 /// Returns whether the current event has had its default prevented.
 pub fn event_default_prevented() -> bool {
     false
-}
-
-/// Invokes a UI method.
-pub fn invoke_ui_method(element: i32, method: &str, params: i32, callback: i32) -> Result<()> {
-    raw::invoke_ui_method(element, method, params, callback);
-    Ok(())
 }
 
 /// Creates a timeout.
