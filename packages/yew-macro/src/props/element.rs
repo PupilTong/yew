@@ -151,6 +151,7 @@ static LISTENER_SET: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
         "onstalled",
         "onsubmit",
         "onsuspend",
+        "ontap",
         "ontimeupdate",
         "ontoggle",
         "onvolumechange",

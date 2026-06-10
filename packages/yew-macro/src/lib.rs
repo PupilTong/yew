@@ -51,6 +51,7 @@ mod derive_props;
 mod function_component;
 mod hook;
 mod html_tree;
+mod inline_image;
 mod props;
 mod stringify;
 
@@ -58,6 +59,7 @@ use derive_props::DerivePropsInput;
 use function_component::{function_component_impl, FunctionComponent, FunctionComponentName};
 use hook::{hook_impl, HookFn};
 use html_tree::{HtmlRoot, HtmlRootVNode};
+use inline_image::InlineImageInput;
 use proc_macro::TokenStream;
 use quote::ToTokens;
 use syn::buffer::Cursor;
@@ -130,6 +132,12 @@ pub fn props(input: TokenStream) -> TokenStream {
 pub fn classes(input: TokenStream) -> TokenStream {
     let classes = parse_macro_input!(input as classes::Classes);
     TokenStream::from(classes.into_token_stream())
+}
+
+#[proc_macro]
+pub fn inline_image(input: TokenStream) -> TokenStream {
+    let image = parse_macro_input!(input as InlineImageInput);
+    TokenStream::from(image.into_token_stream())
 }
 
 #[proc_macro_error::proc_macro_error]

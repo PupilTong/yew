@@ -16,6 +16,7 @@
 //!   wired to host callbacks once the runtime boundary provides a real callback handle.
 //! * `SUBTREE_IDS` — element branding, retained as part of that scaffolding.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -83,6 +84,21 @@ impl From<&dyn Listener> for EventDescriptor {
     }
 }
 
+impl EventDescriptor {
+    pub(crate) fn event_type(&self) -> Cow<'static, str> {
+        self.kind.type_name()
+    }
+
+    pub(crate) fn listener_options(&self) -> lynx_sys::EventListenerOptions {
+        let options = lynx_sys::EventListenerOptions::new();
+        if self.passive {
+            options.passive()
+        } else {
+            options
+        }
+    }
+}
+
 /// Manages host-side event listener registrations for a single subtree.
 ///
 /// Each subtree tracks at most one host-side listener per event kind
@@ -141,6 +157,7 @@ struct SubtreeData {
 #[derive(Debug)]
 struct WeakSubtree {
     subtree_id: TreeId,
+    #[allow(dead_code)]
     weak_ref: Weak<SubtreeData>,
 }
 
@@ -175,6 +192,7 @@ impl AppData {
         });
     }
 
+    #[allow(dead_code)]
     fn ensure_handled(&mut self, desc: &EventDescriptor) {
         if !self.listening.insert(desc.clone()) {
             return;
@@ -246,6 +264,7 @@ impl BSubtree {
     }
 
     /// Ensure the event described is handled on all subtrees
+    #[allow(dead_code)]
     pub fn ensure_handled(&self, desc: &EventDescriptor) {
         self.0.app_data.borrow_mut().ensure_handled(desc);
     }
