@@ -274,11 +274,16 @@ pub use yew_macro::inline_image;
 /// [`Properties`]: ./html/trait.Properties.html
 /// [Yew Docs]: https://yew.rs/concepts/components/properties
 pub use yew_macro::props;
+/// Tokenize a CSS string literal into a vector of CSS tokens at compile time.
+pub use yew_macro::CSS;
 
 /// This module contains macros which implements html! macro and JSX-like templates
 pub mod macros {
-    pub use crate::{classes, html, html_nested, inline_image, props};
+    pub use crate::{classes, html, html_nested, inline_image, props, CSS};
 }
+
+/// CSS token structures used by CSS parsing macros.
+pub use lynx_sys::css;
 
 pub mod callback;
 pub mod context;
@@ -335,7 +340,7 @@ pub mod prelude {
         BaseComponent, Children, ChildrenWithProps, Classes, Component, Context, Html, HtmlResult,
         NodeRef, Properties,
     };
-    pub use crate::macros::{classes, html, html_nested, inline_image};
+    pub use crate::macros::{classes, html, html_nested, inline_image, CSS};
     pub use crate::virtual_dom::AttrValue;
 }
 

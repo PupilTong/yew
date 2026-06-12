@@ -16,6 +16,8 @@ rust-version = "1.84.0"
 proc-macro = true
 
 [dependencies]
+cssparser = "0.37.0"
+lynx_sys = { path = "../lynx_sys" }
 proc-macro-error = "1"
 proc-macro2.workspace = true
 quote.workspace = true
