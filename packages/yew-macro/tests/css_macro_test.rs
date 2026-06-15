@@ -5,14 +5,15 @@ fn css_macro() {
 }
 
 #[test]
-fn css_macro_returns_tokens() {
-    let tokens: Vec<yew::css::Token> = yew::CSS!(".item { color: red; background-color: #fff; }");
+fn css_macro_returns_static_token_stream_bytes() {
+    let tokens: yew::css::CSSTokenStream =
+        yew::CSS!(".item { color: red; background-color: #fff; }");
 
     assert!(!tokens.is_empty());
+    assert!(tokens.has_valid_header());
+    assert!(tokens.token_count().is_some_and(|count| count > 0));
+    assert!(tokens.payload_len().is_some_and(|len| len > 0));
     assert!(tokens
-        .iter()
-        .any(|token| { token.token_type == yew::css::IDENT_TOKEN && token.value == "color" }));
-    assert!(tokens
-        .iter()
-        .any(|token| token.token_type == yew::css::LEFT_CURLY_BRACKET_TOKEN));
+        .as_bytes()
+        .starts_with(&yew::css::CSS_TOKEN_STREAM_MAGIC));
 }

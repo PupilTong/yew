@@ -37,7 +37,7 @@ pub struct u8;
 pub struct usize;
 
 fn compile_pass() {
-    let tokens: ::std::vec::Vec<::yew::css::Token> =
+    let tokens: ::yew::css::CSSTokenStream =
         ::yew::CSS!(".item { color: red; transform: translate(10px); }");
 
     let _ = tokens;

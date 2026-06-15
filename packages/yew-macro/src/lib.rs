@@ -141,7 +141,7 @@ pub fn inline_image(input: TokenStream) -> TokenStream {
     TokenStream::from(image.into_token_stream())
 }
 
-/// Tokenize a CSS string literal into `Vec<Token>` at compile time.
+/// Tokenize a CSS string literal into contiguous static bytes at compile time.
 #[proc_macro_error::proc_macro_error]
 #[proc_macro]
 #[allow(non_snake_case)]

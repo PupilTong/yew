@@ -489,12 +489,20 @@ pub trait ElementOps {
 impl ElementOps for Element {
     #[inline]
     fn set_attribute(&self, key: &str, value: &str) -> Result<()> {
+        if key == "class" {
+            raw::set_classes(self.raw, value);
+            return Ok(());
+        }
         raw::set_string_attribute(self.raw, key, value);
         Ok(())
     }
 
     #[inline]
     fn remove_attribute(&self, key: &str) -> Result<()> {
+        if key == "class" {
+            raw::set_classes(self.raw, "");
+            return Ok(());
+        }
         raw::remove_attribute(self.raw, key);
         Ok(())
     }
