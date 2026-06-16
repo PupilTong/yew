@@ -274,6 +274,10 @@ mod ffi {
         );
         #[link_name = "__RemoveAttribute"]
         pub fn remove_attribute(element: i32, key_ptr: i32, key_len: i32);
+        #[link_name = "__AdoptStyleSheetTokens"]
+        pub fn adopt_style_sheet_tokens(bytes_ptr: i32, bytes_len: i32);
+        #[link_name = "__ReplaceStyleSheetsTokens"]
+        pub fn replace_style_sheets_tokens(bytes_ptr: i32, bytes_len: i32);
         #[link_name = "__AddClass"]
         pub fn add_class(element: i32, class_ptr: i32, class_len: i32);
         #[link_name = "__SetClasses"]
@@ -506,6 +510,16 @@ pub fn set_string_attribute(element: i32, key: &str, value: &str) {
 pub fn remove_attribute(element: i32, key: &str) {
     let (key_ptr, key_len) = string_parts(key);
     unsafe { ffi::remove_attribute(element, key_ptr, key_len) }
+}
+
+#[inline]
+pub fn adopt_style_sheet_tokens(tokens: crate::css::CSSTokenStream) {
+    unsafe { ffi::adopt_style_sheet_tokens(tokens.as_ptr() as i32, tokens.len() as i32) }
+}
+
+#[inline]
+pub fn replace_style_sheets_tokens(tokens: crate::css::CSSTokenStream) {
+    unsafe { ffi::replace_style_sheets_tokens(tokens.as_ptr() as i32, tokens.len() as i32) }
 }
 
 #[inline]

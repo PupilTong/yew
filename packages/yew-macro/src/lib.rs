@@ -47,6 +47,7 @@
 //! Please refer to [https://github.com/yewstack/yew](https://github.com/yewstack/yew) for how to set this up.
 
 mod classes;
+mod css;
 mod derive_props;
 mod function_component;
 mod hook;
@@ -138,6 +139,14 @@ pub fn classes(input: TokenStream) -> TokenStream {
 pub fn inline_image(input: TokenStream) -> TokenStream {
     let image = parse_macro_input!(input as InlineImageInput);
     TokenStream::from(image.into_token_stream())
+}
+
+/// Tokenize a CSS string literal into contiguous static bytes at compile time.
+#[proc_macro_error::proc_macro_error]
+#[proc_macro]
+#[allow(non_snake_case)]
+pub fn CSS(input: TokenStream) -> TokenStream {
+    css::css(input)
 }
 
 #[proc_macro_error::proc_macro_error]
