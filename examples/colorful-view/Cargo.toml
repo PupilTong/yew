@@ -1,0 +1,11 @@
+[package]
+name = "colorful-view-yew"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+lynx_sys = { path = "../../packages/lynx_sys", default-features = false }
+yew = { path = "../../packages/yew", features = ["csr"] }
+
+[workspace]
