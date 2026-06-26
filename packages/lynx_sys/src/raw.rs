@@ -272,6 +272,8 @@ mod ffi {
             value_ptr: i32,
             value_len: i32,
         );
+        #[link_name = "__SetInlineStyleText"]
+        pub fn set_inline_style_text(element: i32, value_ptr: i32, value_len: i32);
         #[link_name = "__RemoveAttribute"]
         pub fn remove_attribute(element: i32, key_ptr: i32, key_len: i32);
         #[link_name = "__AdoptStyleSheetTokens"]
@@ -504,6 +506,12 @@ pub fn set_string_attribute(element: i32, key: &str, value: &str) {
     let (key_ptr, key_len) = string_parts(key);
     let (value_ptr, value_len) = string_parts(value);
     unsafe { ffi::set_string_attribute(element, key_ptr, key_len, value_ptr, value_len) }
+}
+
+#[inline]
+pub fn set_inline_style_text(element: i32, value: &str) {
+    let (value_ptr, value_len) = string_parts(value);
+    unsafe { ffi::set_inline_style_text(element, value_ptr, value_len) }
 }
 
 #[inline]

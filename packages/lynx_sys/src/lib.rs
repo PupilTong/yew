@@ -493,6 +493,10 @@ impl ElementOps for Element {
             raw::set_classes(self.raw, value);
             return Ok(());
         }
+        if key == "style" {
+            raw::set_inline_style_text(self.raw, value);
+            return Ok(());
+        }
         raw::set_string_attribute(self.raw, key, value);
         Ok(())
     }
